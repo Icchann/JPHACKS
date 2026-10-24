@@ -1,36 +1,255 @@
-# サンプル（プロダクト名）
+# 山網（Sanmou）— 山林センサー監視システム
 
-[![IMAGE ALT TEXT HERE](https://jphacks.com/wp-content/uploads/2026/07/IMG_5316.png)](https://www.youtube.com/watch?v=piaNsc6ilBI)
+[![山網（Sanmou）デモ画面](https://jphacks.com/wp-content/uploads/2026/07/IMG_5316.png)](https://www.youtube.com/watch?v=piaNsc6ilBI)
+
+---
+
+## 🚀 起動方法（セットアップ不要・完全自動）
+
+手動でのライブラリ導入（`npm install` や `pip install`、仮想環境作成など）は**一切不要**です。
+初回起動時に必要な準備がすべて自動で行われ、数秒後にブラウザが自動で立ち上がります。
+
+### 1. 画面・地図・ダッシュボードを確認したいとき（デモモード）
+
+- **Windows**: フォルダ内の **`start.bat` をダブルクリック**
+- **Mac / Linux**: ターミナルで **`./start.sh`** を実行（または `python3 start.py`）
+
+> 自動で画面サーバーが立ち上がり、ブラウザで **森林基本図マップ（`http://localhost:3000/map`）** が開きます。
+
+### 2. 外付け機器（USB集約機）を繋いで実機テストしたいとき（ハードウェア担当者）
+
+- **Windows**: フォルダ内の **`start-hardware.bat` をダブルクリック**（COMポート番号を入力）
+- **Mac / Linux**: ターミナルで **`./start-hardware.sh`** を実行
+
+> 自動でUSBシリアル受信・DB・API・画面が一括起動し、**リアルタイム波形ダッシュボード（`http://localhost:3000/dashboard`）** が開きます。
+
+### 🛑 終了する方法（ワンステップ）
+
+起動している黒い画面（ウィンドウ）で **`Ctrl + C` を押すか、ウィンドウの「×」ボタンで閉じるだけ** で安全に全処理が停止します。
+
+---
 
 ## 製品概要
-### 背景(製品開発のきっかけ、課題等）
-### 製品説明（具体的な製品の説明）
+
+### 背景 (製品開発のきっかけ、課題等)
+
+近年、地球温暖化に伴う線状降水帯の発生や集中豪雨の激甚化により、山林の斜面崩壊や土砂崩れ被害が急増しています。しかし、従来の山林監視には以下の大きな課題がありました。
+
+1. **通信インフラの不在**: 危険な急傾斜地や山林深部は携帯キャリアの電波（4G/5G）が届かず、一般的なクラウド型IoTサービスが利用できない。
+2. **現地電源・設置の困難さ**: 商用電源がない過酷な屋外環境で長期間稼働し、多点の傾斜や土壌水分を低消費電力で集約する仕組みが不足している。
+3. **現場での即時監視の欠如**: 現場作業者や自治体・調査員が現地入りした際、インターネット接続に依存せず、その場で手元のPCを開いて即座に危険度を可視化・判断できる監視ツールが存在しない。
+
+本プロジェクト「山網（Sanmou）」は、電波の届かない山林現場でも、**長距離無線（LoRa）と現場エッジPC（オフライン稼働）を直結**し、山林斜面の異変（土壌水分・傾斜）をリアルタイムに検知・可視化して現場の安全を守るために開発されました。
+
+---
+
+### 製品説明 (具体的な製品の説明)
+
+「山網」は、山林に分散配置された各種IoTセンサー端末の計測データを集約し、現場のノートPC上でリアルタイムに監視・異常検知を行うシステムです。
+
+- **センサー端末**: 樹木や斜面に設置され、3軸加速度（傾斜算出用）、土壌水分、電池電圧を計測。
+- **長距離通信（LoRa）**: 電波の届かない山林でも低消費電力・長距離通信で現場集約機へデータを集約。
+- **現場エッジPC直結（USBシリアル）**: 集約機とノートPCをUSB接続し、パケット（S0形式）を解析してローカル蓄積。
+- **Web監視ダッシュボード（Next.js + FastAPI）**:
+  - **衛星写真地図（`/map`）**: 全センサーの重要度（正常/注意/危険）をカラーマーカーで可視化し、常設警告パネルで一覧監視。
+  - **センサー詳細（`/sensors/[id]`）**: 水分・傾斜の時系列SVGグラフと機器ステータスを確認。
+  - **リアルタイムダッシュボード（`/dashboard`）**: 3秒間隔で受信生テレメトリを更新・グラフ描画。
+  - **センサー管理（`/sensors`）**: 設置台帳の登録・座標編集（SQLite永続化）。
+
+---
+
 ### 特長
-#### 1. 特長1
-#### 2. 特長2
-#### 3. 特長3
+
+#### 1. 完全オフライン自立稼働（ネット環境不要）
+
+クラウドや外部SaaS、認証サーバーに一切依存せず、ノートPC単体（ローカルSQLite + FastAPI + Next.js）でデータ受信・蓄積・監視UIの全工程が完結します。インターネットが完全に遮断された山間部深部や被災直後の現場でも即座に稼働します。
+
+#### 2. 直感的な衛星地図監視とリアルタイムテレメトリ
+
+Google Maps衛星写真上に全センサーをプロット（オフライン時やキー未設定時は自動でローカルグリッドにフォールバック）。異常発生時は右側警告パネルとトーストで即座に通知し、ワンクリックで対象センサー位置へフォーカス・詳細推移へナビゲーションします。
+
+#### 3. Windows & macOS クロスプラットフォーム両対応
+
+現場でハードウェア集約機とUSB接続するWindows環境（PowerShell / COMポート）はもちろん、開発・デモ検証用のmacOS環境（POSIX / `/dev/tty.*`）でも同一リポジトリで動作します。また、ハードウェア未接続でもデモモード（`source=demo`）でWeb画面単体の検証が可能です。
+
+---
 
 ### 解決出来ること
+
+- **土砂災害・斜面崩壊の早期警戒**: 降雨による土壌水分の飽和および斜面の微小な角度変化を早期に捉え、作業員の避難判断や現場管理に貢献。
+- **電波圏外エリアの監視自動化**: 携帯電波が届かない急傾斜地でも、LoRaマルチホップ/中継により遠隔から一括取得。
+- **災害現場・臨時調査での迅速な立ち上げ**: 専用サーバーや回線契約不要で、PC1台と集約機を持ち込むだけで即日監視網を構築可能。
+
+---
+
 ### 今後の展望
-### 注力したこと（こだわり等）
-* 
-* 
+
+- **異常判定エンジンの高度化**: 加速度生値からの高精度な傾斜角計算、土壌センサーの土質別校正値適用、連続判定回数による誤検知フィルタの実装。
+- **完全オフライン地図（ローカルタイル配信）**: インターネット未接続時でも衛星写真・地形図を表示できるオフライン地図タイルの内蔵。
+- **現地点検用スマホPWA（QR点検）**: センサー現地のQRコードを読み取り、オフラインで点検報告を蓄積してPCへ同期する機能の拡充。
+
+---
+
+### 注力したこと (こだわり等)
+
+- **エンジニアリング規律の徹底**: `~/.gemini/GEMINI.md` に準拠し、すべてのコードに「なぜその実装を選択したか（意図・背景）」を日本語で記述。例外の握りつぶし排除、早期リターンの徹底、マジックナンバーの定数化を徹底。
+- **データ境界の厳格な分離**: 開発用架空データ（`source=demo`）と実機生データ（`source=device_test`）をUIおよびAPIで明確に区別し、未確定のしきい値や危険判定を偽装せず「未判定」として誠実に扱う設計。
+- **堅牢なシリアル受信パイプライン**: ノイズや起動ログが混ざるUSBシリアル通信に対し、CRLFフレームバッファ、破損行の除外、統計カウントを行い、受信プロセスが決してクラッシュしない耐障害性を実現。
+
+---
 
 ## 開発技術
+
 ### 活用した技術
+
 #### API・データ
-* 
-* 
+
+- **Google Maps JavaScript API**: 衛星写真地図表示（未設定時・オフライン時自動フォールバック機能付き）
+- **FastAPI (REST API)**: OpenAPI自動生成、TypeScript型自動同期（`openapi-typescript`）
 
 #### フレームワーク・ライブラリ・モジュール
-* 
-* 
+
+- **フロントエンド**: Next.js 16.4 (App Router), React 19, TypeScript (2-space)
+- **バックエンド**: FastAPI, Python 3.11+ (4-space), Pydantic v2, SQLAlchemy 2, Alembic
+- **データ保存**: SQLite（実証・オフライン用）, CSV（シリアル生データログ）
+- **品質保証**: ESLint, Prettier, Vitest, Ruff, mypy (strict), pytest
 
 #### デバイス
-* 
-* 
+
+- **山林センサー端末**: 樹木ノード（T1, T2）、斜面ノード（S1, S2）
+- **センサー計測要素**: 3軸加速度（`ax`, `ay`, `az`）、土壌水分生値（`soil_raw`）、電池電圧（`battery_mv`）
+- **通信ハードウェア**: LoRa長距離無線モジュール、USBシリアル集約機（115200bps / 8N1 / S0プロトコル）
+
+---
 
 ### 独自技術
+
 #### ハッカソンで開発した独自機能・技術
-* 独自で開発したものの内容をこちらに記載してください
-* 特に力を入れた部分をファイルリンク、またはcommit_idを記載してください。
+
+- **完全オフライン動作を実現するローカル統合エッジスタック**:
+  インターネット接続のない現場でも、ノートPC上でシリアル受信スクリプト、SQLite、FastAPI、Next.jsが連携して自立動作するオフライン完結型アーキテクチャ。
+- **フェイルセーフなS0シリアル通信プロトコル解析パイプライン**:
+  マイコン起動ログ等の非定型ログを安全に無視し、破損レコードを統計カウントしながら正常フレームのみを高速にCSV追記・DB反映する堅牢な受信処理。
+- **重要度と機器状態の独立デュアルステータス判定UI**:
+  観測値の危険度（土壌水分・傾斜）と、機器自体のヘルス（通信断・低電池・故障）を明確に分離したWAI-ARIA準拠の直感的な監視ダッシュボードUI。
+
+---
+
+## 動作環境・必要要件
+
+- **Node.js**: 24.x（Active LTS。チーム開発の互換性として 22.x / 24.x をサポート。EOLの20系以下は非推奨）
+- **Python**: 3.11.x
+- **対応OS**: Windows 11 / macOS 14+ / Linux（クロスプラットフォーム両対応）
+
+---
+
+## 画面確認URL一覧
+
+- 🌲 **山林監視メインスクリーン**: `http://localhost:3000/map`
+  - 森林基本図（等高線地形図）、汎用パンくずリスト
+  - 多層レイヤー切替（休憩所、私有地境界、作業道、危険生物、地質）
+  - 測量標センサーピン（🌲樹木 / ⛰️斜面）、静的危険バッジ
+  - ピンをクリックすると、直近24時間の時系列推移グラフを含む **詳細モーダル** が開きます。
+- 📈 **テレメトリダッシュボード**: `http://localhost:3000/dashboard`
+  - 実機シリアルから届く3軸加速度・土壌生値・電池電圧を3秒ごとにリアルタイム描画。
+- 📋 **センサー管理台帳**: `http://localhost:3000/sensors`
+  - センサーの手動登録・緯度経度編集（SQLite永続化）。
+- 🩺 **API ヘルスチェック**: `http://127.0.0.1:8000/health`
+
+---
+
+<details>
+<summary>🛠️ 開発者向けの手動セットアップ・個別コマンド（任意）</summary>
+
+※通常はダブルクリック（`start.bat` / `start-hardware.bat`）で自動準備されるため、手動実行は不要です。
+
+### 手動セットアップ手順
+
+**Windows (PowerShell)**:
+
+```powershell
+npm --prefix frontend install
+python -m venv backend\.venv
+backend\.venv\Scripts\python -m pip install -r backend\requirements-dev.txt
+```
+
+**macOS / Linux**:
+
+```bash
+npm --prefix frontend install
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install -r backend/requirements-dev.txt
+```
+
+### 個別起動コマンド
+
+```bash
+# フロントエンド単体起動
+npm --prefix frontend run dev
+
+# バックエンド単体起動
+backend/.venv/bin/python -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
+
+# 実証実験一括スクリプト（シリアルあり）
+python scripts/run_test_environment.py --port COM3
+
+# 実証実験一括スクリプト（シリアルなし・既存CSV確認）
+python scripts/run_test_environment.py --no-serial
+```
+
+</details>
+
+## テスト方法・品質検証手順
+
+本プロジェクトでは、コードの堅牢性と保守性を担保するため、以下の自動テストおよび品質検査コマンドを整備しています。
+
+### 1. フロントエンド品質検査・自動テスト
+
+```bash
+# 単体・結合テストの実行（全68テスト・18テストファイル）
+npm --prefix frontend run test
+
+# TypeScript 厳格型検査（型エラーゼロを検証）
+npm --prefix frontend run typecheck
+
+# ESLint 構文・ルール検査（警告ゼロ --max-warnings=0 を検証）
+npm --prefix frontend run lint
+
+# Prettier コードフォーマット検査（2-spaceインデント準拠を検証）
+npm --prefix frontend run format:check
+
+# プロダクションビルド検証
+npm --prefix frontend run build
+```
+
+### 2. バックエンド品質検査・自動テスト
+
+```bash
+# Windows
+backend/.venv/Scripts/python -m pytest backend
+backend/.venv/Scripts/python -m mypy backend/app backend/scripts scripts
+backend/.venv/Scripts/python -m ruff check backend scripts
+backend/.venv/Scripts/python -m ruff format --check backend scripts
+
+# macOS / Linux
+backend/.venv/bin/python -m pytest backend
+backend/.venv/bin/python -m mypy backend/app backend/scripts scripts
+backend/.venv/bin/python -m ruff check backend scripts
+backend/.venv/bin/python -m ruff format --check backend scripts
+```
+
+### 3. ブラウザ動作確認 & オフライン検証手順
+
+1. **Google Chrome / Microsoft Edge での確認**:
+   - `http://localhost:3000/map` にアクセス。
+   - F12キー（または `Cmd + Option + I`）で開発者ツールを開く。
+   - **コンソール（Console）**: 赤文字のエラーや未処理の例外がないことを確認。
+   - **オフラインエミュレーション**:
+     1. 開発者ツールの [Network] タブを開く。
+     2. プルダウンの `No throttling` を **`Offline`** に変更。
+     3. ページを再読み込み（F5）し、外部通信が遮断された状態でも、**ローカルSVG山林マップ・ピン・レイヤー切替・詳細モーダルが正常に稼働すること** を確認。
+   - **デバイスモード（レスポンシブ）**:
+     - `Cmd + Shift + M`（Windows: `Ctrl + Shift + M`）でスマホ・タブレット表示に切り替え、レイアウト崩れがないことを確認。
+
+2. **Apple Safari (macOS / iPhone) での確認**:
+   - Safariで `http://localhost:3000/map` を開き、SVGの等高線・マーカー・波紋点滅アニメーションが滑らかにレンダリングされることを確認。
