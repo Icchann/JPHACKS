@@ -158,6 +158,17 @@
   background: color-mix(in srgb, var(--normal), transparent 90%);
 }
 
+.liveBadge {
+  padding: 4px 10px;
+  border: 1px solid #10b981;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: var(--font-xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: #10b981;
+}
+
 .headerActions {
   display: flex;
   align-items: center;

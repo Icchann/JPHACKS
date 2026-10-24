@@ -28,6 +28,7 @@ import type {
   MapPresetMode,
   ObservationSeverity,
 } from "../types";
+import { useTestObservations } from "../../dashboard/use-test-observations";
 import { useDemoMonitoring } from "../use-demo-monitoring";
 import { Icon } from "./icon";
 import { LayerController } from "./layer-controller";
@@ -45,6 +46,10 @@ export function MonitoringHome({
 } = {}) {
   const router = useRouter();
   const { snapshot, newAlerts, dismissNewAlerts } = useDemoMonitoring();
+  const { data: testObservations } = useTestObservations();
+  const isLiveTestMode = Boolean(
+    testObservations && testObservations.items.length > 0,
+  );
   const [query, setQuery] = useState("");
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<MapFocusRequest | null>(
@@ -76,13 +81,82 @@ export function MonitoringHome({
     () => filterSensors(snapshot.sensors, query),
     [query, snapshot.sensors],
   );
+  // 実機テストモード時（USBシリアル受信時）は、届いた生観測値を地図上のピンへ自動反映
+  const activeSensors = useMemo(() => {
+    if (!testObservations || testObservations.items.length === 0) {
+      return filteredSensors;
+    }
+
+    const latestByNode: Record<string, (typeof testObservations.items)[0]> = {};
+    for (const item of testObservations.items) {
+      latestByNode[item.node_id] = item;
+    }
+
+    const aliases: Record<string, string> = {
+      "DEMO-001": "S1",
+      "DEMO-002": "S2",
+      "DEMO-003": "T1",
+      "DEMO-004": "T2",
+    };
+
+    return filteredSensors.map((sensor) => {
+      const aliasKey = aliases[sensor.sensorCode];
+      const live =
+        latestByNode[sensor.sensorCode] ??
+        (aliasKey ? latestByNode[aliasKey] : undefined) ??
+        latestByNode[sensor.id];
+
+      if (!live) return sensor;
+
+      const soilMoisture =
+        live.soil_raw === null || live.soil_raw === -1
+          ? null
+          : Math.min(Math.max(live.soil_raw / 2000, 0), 1.0);
+      const horizontalAcc = Math.sqrt(live.ax_mg ** 2 + live.ay_mg ** 2);
+      const tiltDeg =
+        Math.round(
+          ((Math.atan2(horizontalAcc, Math.max(Math.abs(live.az_mg), 1)) *
+            180) /
+            Math.PI) *
+            100,
+        ) / 100;
+      const batteryPct =
+        live.battery_mv === null || live.battery_mv === -1
+          ? null
+          : Math.min(
+              Math.max(Math.round(((live.battery_mv - 2800) / 800) * 100), 0),
+              100,
+            );
+      let severity: ObservationSeverity = "normal";
+      if ((soilMoisture !== null && soilMoisture >= 0.75) || tiltDeg >= 2.0) {
+        severity = "danger";
+      } else if (
+        (soilMoisture !== null && soilMoisture >= 0.6) ||
+        tiltDeg >= 1.0
+      ) {
+        severity = "caution";
+      }
+
+      return {
+        ...sensor,
+        sensorCode: live.node_id,
+        observationSeverity: severity,
+        soilMoistureValue: soilMoisture,
+        tiltValue: tiltDeg,
+        batteryPercent: batteryPct,
+        lastReceivedAt: live.received_at,
+        communicationStatus: "online" as const,
+      };
+    });
+  }, [filteredSensors, testObservations]);
+
   const visibleSensorIds = useMemo(
-    () => new Set(filteredSensors.map((sensor) => sensor.id)),
-    [filteredSensors],
+    () => new Set(activeSensors.map((sensor) => sensor.id)),
+    [activeSensors],
   );
   const severityCounts = useMemo(
-    () => countSeverities(snapshot.sensors),
-    [snapshot.sensors],
+    () => countSeverities(activeSensors),
+    [activeSensors],
   );
 
   useEffect(() => {
@@ -255,10 +329,13 @@ export function MonitoringHome({
             </p>
             <div>
               <h1>センサー監視</h1>
-              <span className={styles.demoBadge}>デモ</span>
+              {isLiveTestMode ? (
+                <span className={styles.liveBadge}>実機受信中 (TEST)</span>
+              ) : (
+                <span className={styles.demoBadge}>デモ</span>
+              )}
             </div>
           </div>
-
           <div className={styles.headerActions}>
             <p className={styles.updatedAt}>
               <span>最終更新</span>
@@ -314,7 +391,7 @@ export function MonitoringHome({
                 overlayPaths={DEMO_OVERLAY_PATHS}
                 overlayPoints={DEMO_OVERLAY_POINTS}
                 selectedSensorId={selectedSensorId}
-                sensors={filteredSensors}
+                sensors={activeSensors}
               />
             ) : (
               <SatelliteMap
