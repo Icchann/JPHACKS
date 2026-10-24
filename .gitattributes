@@ -1,0 +1,10 @@
+# Git line ending normalization for cross-platform team development (Windows & macOS)
+* text=auto eol=lf
+
+# Windows shell scripts
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Serial protocol data (S0 protocol requires CRLF delimiters)
+backend/data/*.csv text eol=crlf

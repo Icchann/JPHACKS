@@ -1,0 +1,33 @@
+# 環境変数と秘密情報
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Node.js / Next.js
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+frontend/openapi.json
+frontend/src/types/api.d.ts
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+backend/data/*.csv
+backend/data/*.sqlite3
+
+# エディターとOS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
