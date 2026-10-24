@@ -1,0 +1,562 @@
+.appShell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-rows: var(--app-header-height) minmax(0, 1fr);
+  background: var(--background);
+}
+
+.workspace {
+  min-width: 0;
+  grid-row: 2;
+}
+
+.topbar {
+  position: sticky;
+  z-index: 5;
+  top: var(--app-header-height);
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--background), transparent 4%);
+  backdrop-filter: blur(14px);
+}
+
+.titleBlock > p,
+.detailPanel header p,
+.chartIntro p {
+  margin: 0 0 6px;
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+
+.titleBlock > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.titleBlock h1 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2vw, 1.72rem);
+  font-weight: 760;
+  letter-spacing: 0.02em;
+}
+
+.demoBadge {
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--normal), transparent 60%);
+  border-radius: 999px;
+  color: var(--normal);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: color-mix(in srgb, var(--normal), transparent 90%);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.referenceTime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 0 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.referenceTime span {
+  color: var(--text-subtle);
+  font-weight: 700;
+}
+
+.backLink {
+  display: inline-flex;
+  height: 42px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--forest-700);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  background: var(--surface);
+}
+
+.backLink:hover {
+  border-color: var(--border-strong);
+}
+
+.content {
+  display: grid;
+  width: min(1280px, 100%);
+  gap: 16px;
+  margin: 0 auto;
+  padding: 20px 24px 32px;
+}
+
+.staleNotice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  border: 1px solid color-mix(in srgb, var(--offline), transparent 65%);
+  border-radius: 9px;
+  color: var(--text-muted);
+  background: var(--offline-bg);
+}
+
+.staleNotice p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sensorHeader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.sensorHeader > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sensorHeader > div > span {
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs button {
+  position: relative;
+  display: inline-flex;
+  min-height: 45px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  background: transparent;
+}
+
+.tabs button::after {
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 2px;
+  background: transparent;
+  content: "";
+}
+
+.tabs button[aria-selected="true"] {
+  color: var(--forest-700);
+}
+
+.tabs button[aria-selected="true"]::after {
+  background: var(--forest-700);
+}
+
+.tabs small {
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface-muted);
+}
+
+.tabPanel {
+  min-width: 0;
+}
+
+.tabPanel[hidden] {
+  display: none;
+}
+
+.observationGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.observationCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.observationCard > span,
+.observationCard small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.observationCard > span {
+  font-weight: 750;
+}
+
+.observationCard strong {
+  grid-row: span 2;
+  color: var(--forest-700);
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.observationCard small {
+  color: var(--text-subtle);
+}
+
+.observationCard[data-missing="true"] strong {
+  color: var(--offline);
+}
+
+.overviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.detailPanel,
+.chartPanel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.detailPanel > header {
+  padding: 17px 18px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detailPanel h2,
+.chartIntro h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.detailPanel dl {
+  margin: 0;
+  padding: 4px 18px 9px;
+}
+
+.detailPanel dl > div {
+  display: grid;
+  grid-template-columns: 105px minmax(0, 1fr);
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.detailPanel dl > div:last-child {
+  border-bottom: 0;
+}
+
+.detailPanel dt,
+.detailPanel dd {
+  font-size: 12px;
+}
+
+.detailPanel dt {
+  color: var(--text-subtle);
+  font-weight: 750;
+}
+
+.detailPanel dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.alertList {
+  display: grid;
+  padding: 4px 18px 9px;
+}
+
+.alertRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.alertRow:last-child {
+  border-bottom: 0;
+}
+
+.alertRow > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alertRow time,
+.alertRow span {
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+.alertRow strong {
+  align-self: center;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.alertRow > span {
+  grid-column: 1 / -1;
+}
+
+.emptyState {
+  display: grid;
+  min-height: 180px;
+  margin: 0;
+  place-items: center;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.chartIntro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 4px 2px 14px;
+}
+
+.chartIntro > span {
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+.chartGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.chartPanel {
+  padding: 18px 18px 14px;
+}
+
+.chartPanel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.chartPanel > header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.chartPanel h3 {
+  margin: 0;
+  font-size: 0.94rem;
+}
+
+.chartPanel header span {
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+.chartBody {
+  min-width: 0;
+}
+
+.chartSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 10px;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.axisLabel {
+  fill: var(--text-subtle);
+  font-size: 11px;
+}
+
+.chartLine {
+  stroke: var(--forest-700);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chartPoint {
+  fill: var(--forest-700);
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+  padding: 4px 4px 0 52px;
+}
+
+.chartLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.chartLegend i {
+  width: 16px;
+  height: 3px;
+  border-radius: 99px;
+  background: var(--forest-700);
+}
+
+.chartEmpty {
+  display: grid;
+  min-height: 220px;
+  place-content: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.chartEmpty span {
+  color: var(--text-subtle);
+}
+
+.unimplementedState {
+  display: grid;
+  min-height: 320px;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  background: var(--surface);
+}
+
+.unimplementedState svg {
+  width: 28px;
+  height: 28px;
+  color: var(--forest-700);
+}
+
+.unimplementedState h2,
+.unimplementedState p {
+  margin: 0;
+}
+
+.unimplementedState h2 {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.unimplementedState p {
+  max-width: 520px;
+  font-size: 12px;
+}
+
+.disclaimer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px;
+  color: var(--text-subtle);
+}
+
+.disclaimer svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.disclaimer p {
+  margin: 0;
+  font-size: 12px;
+}
+
+@media (max-width: 1240px) {
+  .topbar,
+  .content {
+    padding-inline: 20px;
+  }
+}
+
+/* PCブラウザーの200%ズーム時は詳細ブロックを縦方向へ再配置します。 */
+@media (max-width: 900px) {
+  .topbar {
+    min-height: 96px;
+    flex-wrap: wrap;
+    padding-block: 12px;
+  }
+
+  .headerActions {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .content {
+    padding: 16px;
+  }
+
+  .tabs {
+    overflow-x: auto;
+  }
+
+  .tabs button {
+    flex: 0 0 auto;
+  }
+
+  .overviewGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,200 @@
+.button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-input);
+  font-size: var(--font-md);
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.primary {
+  color: #ffffff;
+  background: var(--brand-700);
+}
+
+.primary:not(:disabled):hover {
+  background: var(--brand-800);
+}
+
+.secondary {
+  border-color: var(--border-strong);
+  color: var(--text);
+  background: var(--surface);
+}
+
+.secondary:not(:disabled):hover,
+.ghost:not(:disabled):hover {
+  border-color: var(--brand-700);
+  color: var(--brand-800);
+  background: var(--brand-50);
+}
+
+.ghost {
+  border-color: var(--border);
+  color: var(--brand-800);
+  background: transparent;
+}
+
+.danger {
+  color: #ffffff;
+  background: var(--danger);
+}
+
+.danger:not(:disabled):hover {
+  background: color-mix(in srgb, var(--danger), #000000 14%);
+}
+
+.badge,
+.healthBadge {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-1) 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: var(--font-xs);
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.badge > span,
+.healthBadge > span {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 50%;
+  color: currentcolor;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.badge[data-status="normal"] {
+  border-color: color-mix(in srgb, var(--normal), transparent 68%);
+  color: var(--normal);
+  background: var(--normal-bg);
+}
+
+.badge[data-status="caution"] {
+  border-color: color-mix(in srgb, var(--warning), transparent 68%);
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.badge[data-status="danger"] {
+  border-color: color-mix(in srgb, var(--danger), transparent 68%);
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.badge[data-status="unknown"],
+.healthBadge[data-status="unknown"],
+.healthBadge[data-status="offline"] {
+  border-color: color-mix(in srgb, var(--offline), transparent 68%);
+  color: var(--offline);
+  background: var(--offline-bg);
+}
+
+.healthBadge[data-status="online"],
+.healthBadge[data-status="ok"] {
+  border-color: color-mix(in srgb, var(--normal), transparent 68%);
+  color: var(--normal);
+  background: var(--normal-bg);
+}
+
+.healthBadge[data-status="fault"] {
+  border-color: color-mix(in srgb, var(--danger), transparent 68%);
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.healthBadge[data-status="lowBattery"] {
+  border-color: color-mix(in srgb, var(--warning), transparent 68%);
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.kpiTile {
+  position: relative;
+  display: grid;
+  min-height: 88px;
+  align-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.kpiTile::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--brand-700);
+  content: "";
+}
+
+.kpiTile[data-tone="normal"]::before {
+  background: var(--normal);
+}
+
+.kpiTile[data-tone="caution"]::before {
+  background: var(--warning);
+}
+
+.kpiTile[data-tone="danger"]::before {
+  background: var(--danger);
+}
+
+.kpiTile[data-tone="unknown"]::before,
+.kpiTile[data-tone="offline"]::before {
+  background: var(--offline);
+}
+
+.kpiTile > span {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
+.kpiTile > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.kpiTile strong {
+  color: var(--text);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.kpiTile small {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+}

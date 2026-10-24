@@ -1,0 +1,398 @@
+.testBadge {
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--info), transparent 55%);
+  border-radius: 999px;
+  color: var(--info);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: color-mix(in srgb, var(--info), transparent 91%);
+}
+
+.headerStatus {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.headerStatus > span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--normal);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--normal), transparent 84%);
+}
+
+.headerStatus > span[data-status="error"] {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger), transparent 84%);
+}
+
+.headerStatus div {
+  display: flex;
+  flex-direction: column;
+}
+
+.headerStatus strong {
+  font-size: 12px;
+}
+
+.headerStatus small {
+  color: var(--text-muted);
+}
+
+.headerStatus button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--forest-700);
+  font-weight: 750;
+  cursor: pointer;
+  background: var(--surface);
+}
+
+.content {
+  display: grid;
+  width: min(1440px, 100%);
+  gap: 16px;
+  margin: 0 auto;
+  padding: 20px 24px 32px;
+}
+
+.errorPanel,
+.waitingPanel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--danger), transparent 60%);
+  border-radius: 10px;
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.waitingPanel {
+  border-color: color-mix(in srgb, var(--info), transparent 65%);
+  color: var(--info);
+  background: color-mix(in srgb, var(--info), transparent 93%);
+}
+
+.errorPanel svg,
+.waitingPanel svg {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+}
+
+.errorPanel div,
+.waitingPanel div {
+  display: flex;
+  flex-direction: column;
+}
+
+.errorPanel span,
+.waitingPanel span {
+  font-size: 12px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryGrid article,
+.telemetrySection,
+.tableSection {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.summaryGrid article {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 3px 10px;
+  padding: 15px 16px;
+}
+
+.summaryGrid article[data-warning="true"] {
+  border-color: color-mix(in srgb, var(--caution), transparent 50%);
+}
+
+.summaryGrid span,
+.summaryGrid small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.summaryGrid strong {
+  color: var(--text);
+  font-size: 1.42rem;
+}
+
+.summaryGrid small {
+  grid-column: 1 / -1;
+}
+
+.telemetrySection,
+.tableSection {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionHeader p,
+.chartCard header p {
+  margin: 0 0 5px;
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.sectionHeader h2,
+.chartCard h3 {
+  margin: 0;
+}
+
+.sectionHeader h2 {
+  font-size: 1.08rem;
+}
+
+.sectionHeader label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sectionHeader select {
+  min-width: 118px;
+  min-height: 36px;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--surface-soft);
+}
+
+.sectionHeader > span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.latestGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.latestGrid article {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-soft);
+}
+
+.latestGrid span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.latestGrid strong {
+  overflow: hidden;
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chartGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.chartCard {
+  min-width: 0;
+  padding: 17px 17px 13px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-soft);
+}
+
+.chartCard > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chartCard h3 {
+  font-size: 0.94rem;
+}
+
+.chartCard header > span {
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+.chartSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 10px;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.axisLabel {
+  fill: var(--text-subtle);
+  font-size: 11px;
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 13px;
+  padding: 3px 4px 0 58px;
+}
+
+.chartLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.chartLegend i {
+  width: 13px;
+  height: 2px;
+  border-radius: 99px;
+}
+
+.chartEmpty {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.tableScroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tableScroll th,
+.tableScroll td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+}
+
+.tableScroll th {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--surface-soft);
+}
+
+.tableScroll th:first-child,
+.tableScroll td:first-child {
+  text-align: left;
+}
+
+.tableScroll td {
+  font-size: 12px;
+}
+
+.emptyCell {
+  height: 90px;
+  color: var(--text-muted);
+  text-align: center !important;
+}
+
+.disclaimer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 3px;
+  color: var(--text-subtle);
+}
+
+.disclaimer svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.disclaimer p {
+  margin: 0;
+  font-size: 12px;
+}
+
+@media (max-width: 1050px) {
+  .summaryGrid,
+  .latestGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chartGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* PCの拡大表示でも主要情報を上から順に確認できるようにします。 */
+@media (max-width: 900px) {
+  .content {
+    padding: 16px;
+  }
+
+  .headerStatus {
+    width: 100%;
+  }
+
+  .headerStatus button {
+    margin-left: auto;
+  }
+
+  .sectionHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sectionHeader label,
+  .sectionHeader select {
+    width: 100%;
+  }
+}

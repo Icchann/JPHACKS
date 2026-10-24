@@ -1,0 +1,252 @@
+.appHeader {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  display: grid;
+  height: var(--app-header-height);
+  grid-column: 1 / -1;
+  grid-row: 1;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 32px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface), transparent 3%);
+  backdrop-filter: blur(16px);
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.appHeader.collapsed {
+  display: none;
+}
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toggleButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.toggleButton:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.toggleButton svg {
+  width: 20px;
+  height: 20px;
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brandMark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--brand-700), transparent 62%);
+  border-radius: 8px;
+  color: #ffffff;
+  background: var(--brand-700);
+}
+
+.brandMark svg {
+  width: 20px;
+  height: 20px;
+}
+
+.brand > div,
+.environmentStatus > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand strong {
+  font-family: "Yu Mincho", "Hiragino Mincho ProN", serif;
+  font-size: 18px;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+}
+
+.brand div > span {
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+}
+
+.navigation {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.navItem {
+  position: relative;
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+  background: transparent;
+}
+
+.navItem svg {
+  width: 17px;
+  height: 17px;
+}
+
+.navItem[aria-current="page"] {
+  color: var(--brand-800);
+  font-weight: 780;
+  background: var(--brand-100);
+}
+
+.navItem[aria-current="page"]::after {
+  position: absolute;
+  right: 12px;
+  bottom: -12px;
+  left: 12px;
+  height: 2px;
+  background: var(--brand-700);
+  content: "";
+}
+
+.navItem:not(:disabled):hover {
+  color: var(--brand-800);
+  background: var(--brand-50);
+}
+
+.navItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.navItem small {
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 18px;
+  background: var(--surface-muted);
+}
+
+.environmentStatus {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
+
+.environmentStatus > div {
+  gap: 1px;
+}
+
+.environmentStatus strong,
+.environmentStatus span:last-child {
+  font-size: 12px;
+}
+
+.environmentStatus strong {
+  color: var(--text);
+}
+
+.environmentStatus span:last-child {
+  color: var(--text-subtle);
+}
+
+.demoPulse {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border: 2px solid var(--normal);
+  border-radius: 50%;
+}
+
+@media (max-width: 1120px) {
+  .appHeader {
+    gap: 16px;
+    padding-inline: 16px;
+  }
+
+  .navItem {
+    padding-inline: 9px;
+  }
+
+  .navItem small,
+  .environmentStatus span:last-child {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .appHeader {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: 56px 56px;
+    gap: 0 16px;
+    padding-inline: 16px;
+  }
+
+  .brand {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .environmentStatus {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .navigation {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: stretch;
+    overflow-x: auto;
+  }
+
+  .navItem {
+    flex: 0 0 auto;
+  }
+
+  .navItem[aria-current="page"]::after {
+    bottom: 0;
+  }
+}
