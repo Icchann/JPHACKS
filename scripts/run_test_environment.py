@@ -52,6 +52,8 @@ def _npm_executable() -> str:
             "npmが見つかりません。Node.js 24系（Active LTS）をセットアップしてください"
         )
     return resolved
+
+
 def _ensure_backend_environment() -> str:
     venv_dir = BACKEND_ROOT / ".venv"
     venv_python = (
@@ -60,7 +62,9 @@ def _ensure_backend_environment() -> str:
         else venv_dir / "bin" / "python"
     )
     if not venv_dir.exists():
-        print("\n[初回自動準備] バックエンド環境（Python仮想環境）を自動作成しています（約1分、初回のみ）...")
+        print(
+            "\n[初回自動準備] バックエンド環境（Python仮想環境）を自動作成しています（約1分、初回のみ）..."
+        )
         subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
         print("✓ 依存ライブラリを自動導入しています...")
         pip_bin = (
@@ -79,7 +83,9 @@ def _ensure_backend_environment() -> str:
 def _ensure_frontend_dependencies() -> None:
     node_modules = FRONTEND_ROOT / "node_modules"
     if not node_modules.exists():
-        print("\n[初回自動準備] 画面ライブラリを自動導入しています（約1分、初回のみ）...")
+        print(
+            "\n[初回自動準備] 画面ライブラリを自動導入しています（約1分、初回のみ）..."
+        )
         npm_bin = _npm_executable()
         subprocess.run([npm_bin, "install"], cwd=str(FRONTEND_ROOT), check=True)
         print("✓ 画面ライブラリの準備が完了しました。\n")
@@ -87,6 +93,7 @@ def _ensure_frontend_dependencies() -> None:
 
 def _python_executable() -> str:
     return _ensure_backend_environment()
+
 
 def _stop_processes(processes: list[subprocess.Popen[bytes]]) -> None:
     # 親の終了時に受信・API・画面を残さないよう、起動した子プロセスだけを停止します。
@@ -204,9 +211,10 @@ def main() -> int:
         # 起動から2.5秒後に自動でブラウザを開く
         try:
             import webbrowser
+
             time.sleep(2.5)
             webbrowser.open(dashboard_url)
-        except Exception:
+        except (OSError, webbrowser.Error):
             pass
         while True:
             for process, (name, _) in zip(processes, commands, strict=True):

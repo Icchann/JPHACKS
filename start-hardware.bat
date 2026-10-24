@@ -7,6 +7,9 @@ echo ====================================================
 echo.
 echo 集約機をPCのUSBに接続した状態で実行してください。
 echo.
+echo 【PCで検出されたシリアルポート】
+backend\.venv\Scripts\python -m serial.tools.list_ports 2>nul || echo (ポート一覧の取得準備中)
+echo.
 set /p COM_PORT="集約機のCOMポート番号を入力してください (例: COM3) [未入力でCOM3]: "
 if "%COM_PORT%"=="" set COM_PORT=COM3
 echo.

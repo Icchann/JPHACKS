@@ -9,7 +9,10 @@ echo "===================================================="
 echo ""
 echo "集約機をPCのUSBに接続した状態で実行してください。"
 echo ""
-read -p "USBシリアルポートを入力してください (例: /dev/tty.usbmodem1101) [未入力で/dev/tty.usbmodem1101]: " PORT
+echo "【PCで検出されたUSBシリアルポート】"
+ls -1 /dev/tty.usb* 2>/dev/null || echo "(USBシリアルポートが見つかりません。USB接続を確認してください)"
+echo ""
+read -p "USBシリアルポートを入力してください (例: /dev/tty.usbmodem1101): " PORT
 PORT=${PORT:-/dev/tty.usbmodem1101}
 
 echo ""
