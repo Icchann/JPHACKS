@@ -1,0 +1,126 @@
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
+from app.core.config import Settings, get_settings
+from app.db.base import Base
+from app.db.session import get_engine, get_session_factory
+from app.main import app
+from app.models.audit_log import AuditLog
+
+TEST_TOKEN = "test-sensor-admin-token"
+
+
+@pytest.fixture
+def sensor_client(tmp_path: Path) -> Iterator[tuple[TestClient, str]]:
+    database_url = f"sqlite+pysqlite:///{(tmp_path / 'sensors.sqlite3').as_posix()}"
+    settings = Settings(
+        app_environment="test",
+        database_url=database_url,
+        sanmou_test_api_token=TEST_TOKEN,
+    )
+    engine = get_engine(database_url)
+    Base.metadata.create_all(engine)
+    app.dependency_overrides[get_settings] = lambda: settings
+    try:
+        with TestClient(app) as client:
+            yield client, database_url
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+        get_session_factory.cache_clear()
+        get_engine.cache_clear()
+
+
+def _headers() -> dict[str, str]:
+    return {"X-Test-Token": TEST_TOKEN}
+
+
+def _payload(sensor_code: str = "T1") -> dict[str, str | float]:
+    return {
+        "sensor_code": sensor_code,
+        "name": "北沢 上流",
+        "latitude": 35.0042,
+        "longitude": 137.0091,
+    }
+
+
+def test_create_list_update_and_audit_sensor(
+    sensor_client: tuple[TestClient, str],
+) -> None:
+    client, database_url = sensor_client
+
+    created = client.post("/sensors", json=_payload(), headers=_headers())
+
+    assert created.status_code == 201
+    created_body = created.json()
+    assert created_body["sensor_code"] == "T1"
+    assert created_body["observation_severity"] == "unknown"
+    assert created_body["communication_status"] == "unknown"
+    assert created_body["source"] == "device_test"
+
+    listed = client.get("/sensors", headers=_headers())
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()["items"]] == [created_body["id"]]
+
+    updated = client.patch(
+        f"/sensors/{created_body['id']}",
+        json={"name": "北沢 最上流", "latitude": 35.1, "longitude": 137.2},
+        headers=_headers(),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "北沢 最上流"
+
+    with get_session_factory(database_url)() as session:
+        actions = list(session.scalars(select(AuditLog.action)))
+        audit_count = session.scalar(select(func.count()).select_from(AuditLog))
+    assert set(actions) == {"sensor.created", "sensor.updated"}
+    assert audit_count == 2
+
+
+def test_rejects_case_insensitive_duplicate_sensor_code(
+    sensor_client: tuple[TestClient, str],
+) -> None:
+    client, _database_url = sensor_client
+    assert client.post("/sensors", json=_payload("T1"), headers=_headers()).status_code == 201
+
+    duplicate = client.post("/sensors", json=_payload("t1"), headers=_headers())
+
+    assert duplicate.status_code == 409
+
+
+def test_rejects_invalid_coordinate(sensor_client: tuple[TestClient, str]) -> None:
+    client, _database_url = sensor_client
+    payload = _payload()
+    payload["latitude"] = 91
+
+    response = client.post("/sensors", json=payload, headers=_headers())
+
+    assert response.status_code == 422
+
+
+def test_requires_test_token(sensor_client: tuple[TestClient, str]) -> None:
+    client, _database_url = sensor_client
+
+    response = client.get("/sensors")
+
+    assert response.status_code == 401
+
+
+def test_sensor_api_is_hidden_in_dev_environment(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{(tmp_path / 'dev.sqlite3').as_posix()}"
+    settings = Settings(
+        app_environment="dev",
+        database_url=database_url,
+        sanmou_test_api_token=TEST_TOKEN,
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    try:
+        response = TestClient(app).get("/sensors", headers=_headers())
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
