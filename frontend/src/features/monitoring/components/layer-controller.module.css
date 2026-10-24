@@ -1,0 +1,231 @@
+.container {
+  position: relative;
+  display: inline-block;
+}
+
+.triggerButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: all 0.15s ease;
+}
+
+.triggerButton:hover {
+  background: var(--surface-muted);
+  border-color: var(--accent);
+}
+
+.triggerIcon {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.triggerLabel {
+  letter-spacing: 0.02em;
+}
+
+.presetBadge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent), transparent 85%);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: 80vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.panelTitle {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.panelSubtitle {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-subtle);
+  line-height: 1.4;
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.presetSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sectionLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-subtle);
+}
+
+.presetButtons {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.presetButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.presetButton:hover {
+  border-color: var(--accent);
+}
+
+.presetButton.activePreset {
+  background: color-mix(in srgb, var(--accent), transparent 85%);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.layerList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.layerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.layerInfo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.layerIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.layerLabel {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layerDescription {
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-subtle);
+  line-height: 1.3;
+}
+
+.visibilityToggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.toggleOpt {
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.toggleOpt:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.toggleOpt:hover {
+  background: var(--surface-muted);
+}
+
+.toggleOpt.activeOpt {
+  background: var(--accent);
+  color: #ffffff;
+}

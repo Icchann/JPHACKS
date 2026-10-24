@@ -1,0 +1,410 @@
+.mapWrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #fbf9f4;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.mapToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.mapTitleBlock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.areaIndicator {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.mountainHeading {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.offlineNotice {
+  font-size: 11px;
+  color: var(--text-subtle);
+}
+
+.toolbarControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.zoomControls {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.zoomButton {
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.zoomButton:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.zoomButton:hover {
+  background: var(--surface-muted);
+}
+
+.canvasContainer {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 480px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fbf9f4;
+}
+
+.svgCanvas {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  user-select: none;
+  transition: transform 0.2s ease-out;
+}
+
+/* 森林区画ポリゴン */
+.coniferZone {
+  fill: #e5eedb;
+  stroke: #d3dfc7;
+  stroke-width: 1;
+}
+
+.broadleafZone {
+  fill: #edf3e6;
+  stroke: #dce4d3;
+  stroke-width: 1;
+}
+
+/* 水系（沢筋） */
+.streamMain {
+  fill: none;
+  stroke: #6b94b0;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.streamBranch {
+  fill: none;
+  stroke: #6b94b0;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.streamText {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #47728e;
+  pointer-events: none;
+}
+
+/* 等高線 */
+.indexContour {
+  stroke: #8a7158;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.intermediateContour {
+  stroke: #baa38f;
+  stroke-width: 0.9;
+  stroke-linecap: round;
+}
+
+.contourLabel {
+  font-size: 10px;
+  font-weight: 700;
+  fill: #735d46;
+  font-family: monospace;
+  pointer-events: none;
+}
+
+/* 林道・作業道・境界線 */
+.roadLine {
+  stroke: #8c5828;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+}
+
+.trailLine {
+  stroke: #a86d38;
+  stroke-width: 1.8;
+  stroke-dasharray: 6 3;
+}
+
+.boundaryLine {
+  stroke: #dc2626;
+  stroke-width: 2.2;
+  stroke-dasharray: 8 4 2 4;
+}
+
+.pathNameText {
+  font-size: 10px;
+  font-weight: 700;
+  fill: #4b382a;
+  text-shadow:
+    0 0 4px #ffffff,
+    0 0 2px #ffffff;
+  pointer-events: none;
+}
+
+/* 施設・注意点 */
+.facilityPointGroup {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.restPointBg {
+  fill: #2563eb;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.hazardPointBg {
+  fill: #d97706;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.facilityIcon {
+  font-size: 12px;
+  fill: #ffffff;
+  pointer-events: none;
+}
+
+.facilityLabel {
+  font-size: 10px;
+  font-weight: 700;
+  fill: #1e293b;
+  text-shadow:
+    0 0 4px #ffffff,
+    0 0 2px #ffffff;
+  pointer-events: none;
+}
+
+/*
+  【重要】ホバーのバグ防止（無限ループ・位置ズレ防止）:
+  1. CSSで transform (scaleやtranslate) を絶対に適用しない。
+  2. ヒット判定円（hitArea）のみポインターイベントを受け付け、他要素は none にする。
+*/
+.sensorMarkerGroup {
+  cursor: pointer;
+  outline: none;
+}
+
+.hitArea {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
+}
+
+.sensorMarkerGroup > *:not(.hitArea) {
+  pointer-events: none;
+}
+
+.markerPin {
+  stroke: #ffffff;
+  stroke-width: 2.5;
+  transition:
+    stroke-width 0.15s ease,
+    filter 0.15s ease;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.25));
+}
+
+.markerPin.normal {
+  fill: #166534;
+}
+
+.markerPin.caution {
+  fill: #d97706;
+}
+
+.markerPin.danger {
+  fill: #dc2626;
+}
+
+/* ホバー時はピンの枠線と影のみを強調（位置や拡大は一切変更しない） */
+.sensorMarkerGroup:hover .markerPin,
+.sensorMarkerGroup:focus-visible .markerPin {
+  stroke: #ffffff;
+  stroke-width: 4px;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.4));
+}
+
+.markerSymbol {
+  font-size: 16px;
+  pointer-events: none;
+}
+
+.codeTagRect {
+  fill: #1e293b;
+  stroke: #ffffff;
+  stroke-width: 1;
+}
+
+.codeTagText {
+  fill: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
+/* 異常値の静的タグ（点滅なし） */
+.dangerAlertPill {
+  fill: #dc2626;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+
+.cautionAlertPill {
+  fill: #d97706;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+
+.alertFlagText {
+  fill: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* 森林計画図凡例 */
+.mapLegend {
+  pointer-events: none;
+}
+
+.legendBox {
+  fill: rgba(255, 255, 255, 0.92);
+  stroke: #dcd6c8;
+  stroke-width: 1;
+}
+
+.legendHeader {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #3e3226;
+}
+
+.legendItem {
+  font-size: 10px;
+  font-weight: 600;
+  fill: #5a4b3d;
+}
+
+/* ホバーツールチップ */
+.hoverTooltip {
+  position: absolute;
+  z-index: 40;
+  transform: translate(-50%, -100%) translateY(-36px);
+  width: 260px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none !important;
+}
+
+.tooltipHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+.tooltipIcon {
+  font-size: 20px;
+}
+
+.tooltipCode {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tooltipType {
+  display: block;
+  font-size: 10px;
+  color: var(--text-subtle);
+}
+
+.tooltipMetrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.metricItem {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-muted);
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.metricLabel {
+  font-size: 10px;
+  color: var(--text-subtle);
+}
+
+.metricValue {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.locationNote {
+  margin: 4px 0 6px;
+  font-size: 10px;
+  color: var(--text-subtle);
+}
+
+.tooltipFooter {
+  border-top: 1px dashed var(--border);
+  padding-top: 4px;
+}
+
+.clickHint {
+  font-size: 10px;
+  color: var(--accent);
+  font-weight: 600;
+}
