@@ -217,9 +217,14 @@ describe("MonitoringHome", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("+24.5°")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "🎯 今の角度を基準姿勢に設定（角度0°・警報停止）",
+      }),
+    ).toBeInTheDocument();
 
     const dismissBtn = screen.getByRole("button", {
-      name: "警報を確認して解除",
+      name: "警報音を停止",
     });
     fireEvent.click(dismissBtn);
 

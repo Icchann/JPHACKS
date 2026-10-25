@@ -45,6 +45,27 @@ export function MobileHome({
     setAt: string;
   } | null>(null);
 
+  // サーバーに保存された最新基準姿勢を取得
+  useEffect(() => {
+    fetch(`/api/test-baseline?node_id=${encodeURIComponent(selectedNodeId)}`)
+      .then((res) => res.json())
+      .then(
+        (data: {
+          baseline?: {
+            ax: number;
+            ay: number;
+            az: number;
+            setAt: string;
+          } | null;
+        }) => {
+          if (data?.baseline) {
+            setBaseline(data.baseline);
+          }
+        },
+      )
+      .catch(() => {});
+  }, [selectedNodeId]);
+
   // 基準姿勢からの角度変位（内積・コサイン類似度）
   const relativeTiltDeg = useMemo(() => {
     if (!latestObs) return null;
@@ -88,12 +109,21 @@ export function MobileHome({
       );
       return;
     }
-    setBaseline({
+    const setAt = new Date().toLocaleTimeString("ja-JP");
+    const newBase = {
       ax: latestObs.ax_mg,
       ay: latestObs.ay_mg,
       az: latestObs.az_mg,
-      setAt: new Date().toLocaleTimeString("ja-JP"),
-    });
+      setAt,
+    };
+    setBaseline(newBase);
+    dismissAlarm();
+
+    void fetch("/api/test-baseline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ node_id: selectedNodeId, ...newBase }),
+    }).catch(() => {});
   };
 
   // GPS設置登録用ステート
@@ -332,6 +362,13 @@ export function MobileHome({
                   <strong>作業員へ退避指示を発令してください</strong>
                   <span>周囲の斜面崩壊・倒木・滑落に注意してください</span>
                 </div>
+                <button
+                  className={styles.calibrateAlarmBtn}
+                  onClick={setBaselinePosture}
+                  type="button"
+                >
+                  🎯 今の角度を基準に設定して警報停止
+                </button>
                 <button
                   className={styles.dismissAlarmBtn}
                   onClick={dismissAlarm}

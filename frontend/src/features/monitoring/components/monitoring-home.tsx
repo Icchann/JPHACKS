@@ -629,9 +629,12 @@ export function MonitoringHome({
     const timeoutId = window.setTimeout(dismissNewAlerts, 6_000);
     return () => window.clearTimeout(timeoutId);
   }, [dismissNewAlerts, newAlerts.length]);
-  // 実機センサーまたは手動トリガーからの緊急警報検出 (Issue #16)
+  // 実機センサーまたは手動トリガーからの緊急警報検出 (Issue #16, #17)
+  const [isAlertDismissed, setIsAlertDismissed] = useState(false);
+
   const activeEmergencyAlert = useMemo(() => {
     if (manualEmergencyAlert) return manualEmergencyAlert;
+    if (isAlertDismissed) return null;
     const tilted = activeSensors.find(
       (s) => s.tiltValue !== null && s.tiltValue >= 15.0,
     );
@@ -645,7 +648,19 @@ export function MonitoringHome({
       };
     }
     return null;
-  }, [manualEmergencyAlert, activeSensors]);
+  }, [manualEmergencyAlert, isAlertDismissed, activeSensors]);
+
+  useEffect(() => {
+    const hasTilted = activeSensors.some(
+      (s) => s.tiltValue !== null && s.tiltValue >= 15.0,
+    );
+    if (!hasTilted && isAlertDismissed) {
+      const timer = setTimeout(() => {
+        setIsAlertDismissed(false);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [activeSensors, isAlertDismissed]);
 
   useEffect(() => {
     if (activeEmergencyAlert) {
@@ -763,6 +778,16 @@ export function MonitoringHome({
             <div className={styles.pcEmergencyActions}>
               <button
                 type="button"
+                className={styles.pcEmergencyCalibrateBtn}
+                onClick={() => {
+                  void resetNodeBaseline(activeEmergencyAlert.sensorCode);
+                }}
+                title="現在取得されている角度を基準姿勢に確定し、角度を0.0°にリセットして警報を直ちに停止します"
+              >
+                🎯 今の角度を基準姿勢に設定（角度0°・警報停止）
+              </button>
+              <button
+                type="button"
                 className={styles.pcEmergencyFocusBtn}
                 onClick={() => focusSensor(activeEmergencyAlert.sensorId)}
               >
@@ -772,11 +797,12 @@ export function MonitoringHome({
                 type="button"
                 className={styles.pcEmergencyDismissBtn}
                 onClick={() => {
+                  setIsAlertDismissed(true);
                   setManualEmergencyAlert(null);
                   stopPcAlarm();
                 }}
               >
-                警報を確認して解除
+                警報音を停止
               </button>
             </div>
           </aside>
