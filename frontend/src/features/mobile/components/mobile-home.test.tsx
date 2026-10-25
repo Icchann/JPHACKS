@@ -74,4 +74,18 @@ describe("MobileHome", () => {
     expect(screen.getByText("35.154210° N")).toBeInTheDocument();
     expect(screen.getByText("136.966420° E")).toBeInTheDocument();
   });
+
+  it("allows setting baseline posture calibration and calculating relative angle", () => {
+    render(<MobileHome dataMode="test" initialNodeId="T1" />);
+
+    const baselineBtn = screen.getByRole("button", {
+      name: "🎯 タニ直立時の姿勢を「基準姿勢」に確定",
+    });
+    fireEvent.click(baselineBtn);
+
+    // Baseline should now be confirmed
+    expect(screen.getByText(/🎯 基準姿勢確定済み/)).toBeInTheDocument();
+    expect(screen.getByText(/ax=10, ay=20, az=980 mg/)).toBeInTheDocument();
+    expect(screen.getByText(/\(基準差\)/)).toBeInTheDocument();
+  });
 });

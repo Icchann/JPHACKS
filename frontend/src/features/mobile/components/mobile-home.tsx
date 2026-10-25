@@ -26,6 +26,75 @@ export function MobileHome({
   const [selectedNodeId, setSelectedNodeId] = useState(initialNodeId);
   const [isAlertActive, setIsAlertActive] = useState(false);
   const [alertReason, setAlertReason] = useState("");
+  // 実機テスト観測データの購読
+  const { data: testData } = useTestObservations();
+
+  // 対象ノードの最新観測データを抽出
+  const latestObs = useMemo(() => {
+    if (!testData?.items || testData.items.length === 0) return null;
+    const matches = testData.items.filter(
+      (item) => item.node_id === selectedNodeId,
+    );
+    return matches.at(-1) ?? null;
+  }, [testData, selectedNodeId]);
+  // 基準姿勢（キャリブレーション値）
+  const [baseline, setBaseline] = useState<{
+    ax: number;
+    ay: number;
+    az: number;
+    setAt: string;
+  } | null>(null);
+
+  // 基準姿勢からの角度変位（内積・コサイン類似度）
+  const relativeTiltDeg = useMemo(() => {
+    if (!latestObs) return null;
+    // seq=0 の全軸ゼロは除外
+    if (
+      latestObs.ax_mg === 0 &&
+      latestObs.ay_mg === 0 &&
+      latestObs.az_mg === 0
+    ) {
+      return null;
+    }
+    if (!baseline) {
+      const horiz = Math.sqrt(latestObs.ax_mg ** 2 + latestObs.ay_mg ** 2);
+      return (
+        (Math.atan2(horiz, Math.max(Math.abs(latestObs.az_mg), 1)) * 180) /
+        Math.PI
+      );
+    }
+    const dot =
+      latestObs.ax_mg * baseline.ax +
+      latestObs.ay_mg * baseline.ay +
+      latestObs.az_mg * baseline.az;
+    const normCurr = Math.sqrt(
+      latestObs.ax_mg ** 2 + latestObs.ay_mg ** 2 + latestObs.az_mg ** 2,
+    );
+    const normBase = Math.sqrt(
+      baseline.ax ** 2 + baseline.ay ** 2 + baseline.az ** 2,
+    );
+    if (normCurr === 0 || normBase === 0) return null;
+    const cosTheta = Math.max(-1.0, Math.min(1.0, dot / (normCurr * normBase)));
+    return (Math.acos(cosTheta) * 180) / Math.PI;
+  }, [latestObs, baseline]);
+
+  const setBaselinePosture = () => {
+    if (
+      !latestObs ||
+      (latestObs.ax_mg === 0 && latestObs.ay_mg === 0 && latestObs.az_mg === 0)
+    ) {
+      alert(
+        "有効な加速度データを受信していません。seq=0の全軸ゼロは基準にできません。",
+      );
+      return;
+    }
+    setBaseline({
+      ax: latestObs.ax_mg,
+      ay: latestObs.ay_mg,
+      az: latestObs.az_mg,
+      setAt: new Date().toLocaleTimeString("ja-JP"),
+    });
+  };
 
   // GPS設置登録用ステート
   const [regNodeId, setRegNodeId] = useState("T1");
@@ -38,18 +107,6 @@ export function MobileHome({
   const [regSuccessMessage, setRegSuccessMessage] = useState<string | null>(
     null,
   );
-
-  // 実機テスト観測データの購読
-  const { data: testData } = useTestObservations();
-
-  // 対象ノードの最新観測データを抽出
-  const latestObs = useMemo(() => {
-    if (!testData?.items || testData.items.length === 0) return null;
-    const matches = testData.items.filter(
-      (item) => item.node_id === selectedNodeId,
-    );
-    return matches.at(-1) ?? null;
-  }, [testData, selectedNodeId]);
 
   // Web Audio API による自律型アラーム音生成（外部音声ファイル不要）
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -123,26 +180,18 @@ export function MobileHome({
     stopAlarmSound();
   }, [stopAlarmSound]);
 
-  // 実機データから傾斜変化（15°以上）を検知して自動警報
+  // 基準姿勢からの傾斜変位（15°以上）を検知して自動警報
   useEffect(() => {
-    if (!latestObs) return;
-    const horizontalAcc = Math.sqrt(
-      latestObs.ax_mg ** 2 + latestObs.ay_mg ** 2,
-    );
-    const tiltDeg =
-      (Math.atan2(horizontalAcc, Math.max(Math.abs(latestObs.az_mg), 1)) *
-        180) /
-      Math.PI;
-
-    if (tiltDeg >= 15.0 && !isAlertActive) {
+    if (relativeTiltDeg === null) return;
+    if (relativeTiltDeg >= 15.0 && !isAlertActive) {
       const timer = setTimeout(() => {
         triggerAlarm(
-          `傾斜変位 ${tiltDeg.toFixed(1)}° を検知しました（基準姿勢から大きく変動）`,
+          `姿勢変位 +${relativeTiltDeg.toFixed(1)}° を検知しました（${baseline ? "確定した基準姿勢" : "初期姿勢"}から大きく変動）`,
         );
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [latestObs, isAlertActive, triggerAlarm]);
+  }, [relativeTiltDeg, isAlertActive, triggerAlarm, baseline]);
   useEffect(() => {
     return () => {
       stopAlarmSound();
@@ -325,22 +374,64 @@ export function MobileHome({
                     <span>姿勢傾斜角</span>
                     <strong>
                       {latestObs
-                        ? `+${((Math.atan2(Math.sqrt(latestObs.ax_mg ** 2 + latestObs.ay_mg ** 2), Math.max(Math.abs(latestObs.az_mg), 1)) * 180) / Math.PI).toFixed(1)}°`
-                        : "+0.4°（安定）"}
+                        ? latestObs.ax_mg === 0 &&
+                          latestObs.ay_mg === 0 &&
+                          latestObs.az_mg === 0
+                          ? "初期化中 (全軸0)"
+                          : relativeTiltDeg !== null
+                            ? `+${relativeTiltDeg.toFixed(1)}° (${baseline ? "基準差" : "仮算出"})`
+                            : "計算不可"
+                        : "待機中"}
                     </strong>
                   </div>
                   <div className={styles.metricItem}>
                     <span>土壌水分生値</span>
-                    <strong>{latestObs?.soil_raw ?? "1420 ADC"}</strong>
+                    <strong>
+                      {latestObs
+                        ? latestObs.soil_raw === null ||
+                          latestObs.soil_raw === -1
+                          ? "未計測 (未接続)"
+                          : `${latestObs.soil_raw} ADC`
+                        : "待機中"}
+                    </strong>
                   </div>
                   <div className={styles.metricItem}>
                     <span>電池電圧</span>
                     <strong>
-                      {latestObs?.battery_mv
-                        ? `${latestObs.battery_mv} mV`
-                        : "3280 mV"}
+                      {latestObs
+                        ? latestObs.battery_mv === null ||
+                          latestObs.battery_mv === -1
+                          ? "未計測 (未接続)"
+                          : `${latestObs.battery_mv} mV`
+                        : "待機中"}
                     </strong>
                   </div>
+                </div>
+
+                <div className={styles.baselineBox}>
+                  {baseline ? (
+                    <div className={styles.baselineStatus}>
+                      <span>🎯 基準姿勢確定済み ({baseline.setAt}):</span>
+                      <code>
+                        ax={baseline.ax}, ay={baseline.ay}, az={baseline.az} mg
+                      </code>
+                      <button
+                        type="button"
+                        className={styles.resetBaselineBtn}
+                        onClick={setBaselinePosture}
+                      >
+                        現在の姿勢で基準を再設定
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.setBaselineBtn}
+                      onClick={setBaselinePosture}
+                    >
+                      🎯 タニ直立時の姿勢を「基準姿勢」に確定
+                    </button>
+                  )}
                 </div>
 
                 <div className={styles.testActionBlock}>

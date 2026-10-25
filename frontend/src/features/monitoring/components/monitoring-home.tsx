@@ -342,19 +342,23 @@ export function MonitoringHome({
       // 台帳の sensorCode とパケットの node_id を完全一致で正規照合
       const live = latestByNode[sensor.sensorCode];
       if (!live) return sensor;
+      // seq=0 の全軸ゼロは基準取得・角度計算から除外する（Issue #13）
+      const isZeroAcc =
+        live.ax_mg === 0 && live.ay_mg === 0 && live.az_mg === 0;
 
       const soilMoisture =
         live.soil_raw === null || live.soil_raw === -1
           ? null
           : Math.min(Math.max(live.soil_raw / 2000, 0), 1.0);
       const horizontalAcc = Math.sqrt(live.ax_mg ** 2 + live.ay_mg ** 2);
-      const tiltDeg =
-        Math.round(
-          ((Math.atan2(horizontalAcc, Math.max(Math.abs(live.az_mg), 1)) *
-            180) /
-            Math.PI) *
-            100,
-        ) / 100;
+      const tiltDeg = isZeroAcc
+        ? null
+        : Math.round(
+            ((Math.atan2(horizontalAcc, Math.max(Math.abs(live.az_mg), 1)) *
+              180) /
+              Math.PI) *
+              100,
+          ) / 100;
       const batteryPct =
         live.battery_mv === null || live.battery_mv === -1
           ? null
@@ -362,7 +366,6 @@ export function MonitoringHome({
               Math.max(Math.round(((live.battery_mv - 2800) / 800) * 100), 0),
               100,
             );
-
       // 実測値は校正値・基準姿勢が未確定のため、危険判定を下さず未判定（normal）とする
       const severity: ObservationSeverity = "normal";
 

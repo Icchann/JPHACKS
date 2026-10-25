@@ -1,3 +1,4 @@
+import math
 import re
 from dataclasses import dataclass
 
@@ -32,6 +33,20 @@ class SerialObservation:
     @property
     def battery_mv_measured(self) -> int | None:
         return None if self.battery_mv == -1 else self.battery_mv
+
+    @property
+    def is_zero_acceleration(self) -> bool:
+        """全軸ゼロの加速度レコード（seq=0等の初期化値）を判定する。"""
+        return self.ax_mg == 0 and self.ay_mg == 0 and self.az_mg == 0
+
+    @property
+    def is_valid_gravity_vector(self) -> bool:
+        """重力加速度ベクトルとして有効か（全軸ゼロではなく、健全な重力範囲内か）を判定する。"""
+        if self.is_zero_acceleration:
+            return False
+        total_acc_sq = self.ax_mg**2 + self.ay_mg**2 + self.az_mg**2
+        # 1G (約1000mg) に対して 500mg〜2000mg の範囲を健全な静止重力ベクトルとする
+        return 500**2 <= total_acc_sq <= 2000**2
 
 
 def _parse_non_negative_integer(value: str, field_name: str) -> int:
@@ -103,3 +118,23 @@ def parse_serial_line(line: bytes | str) -> SerialObservation | None:
         battery_mv=_parse_integer(battery_mv, "battery_mv"),
         raw_line=raw_line,
     )
+
+
+def calculate_tilt_angle_deg(
+    ax: float,
+    ay: float,
+    az: float,
+    base_ax: float,
+    base_ay: float,
+    base_az: float,
+) -> float | None:
+    """基準ベクトルと現在ベクトルの成す角（度）を内積から計算する。無効ベクトルの場合はNone。"""
+    curr_norm_sq = ax**2 + ay**2 + az**2
+    base_norm_sq = base_ax**2 + base_ay**2 + base_az**2
+    if curr_norm_sq == 0 or base_norm_sq == 0:
+        return None
+
+    dot_product = ax * base_ax + ay * base_ay + az * base_az
+    cos_theta = dot_product / (math.sqrt(curr_norm_sq) * math.sqrt(base_norm_sq))
+    cos_theta = max(-1.0, min(1.0, cos_theta))
+    return math.degrees(math.acos(cos_theta))
