@@ -928,3 +928,17 @@
   outline: 3px solid #b47b11;
   outline-offset: 2px;
 }
+/* 地図の最低高さに押されて、上部の行が縮んで重なることを防ぎます。 */
+.workspace > * {
+  flex-shrink: 0;
+}
+
+.mapSection {
+  flex: 1 0 auto;
+  min-height: 580px;
+}
+
+.topbar {
+  flex-wrap: wrap;
+  padding-block: 12px;
+}
