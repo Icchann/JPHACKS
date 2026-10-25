@@ -178,6 +178,8 @@ def main() -> int:
                 "run",
                 "dev",
                 "--",
+                "--hostname",
+                "0.0.0.0",
                 "--port",
                 str(args.frontend_port),
             ],

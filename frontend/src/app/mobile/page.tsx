@@ -11,6 +11,8 @@ type PageProps = {
   searchParams?: Promise<{
     mode?: string;
     node?: string;
+    tab?: string;
+    nfc?: string;
   }>;
 };
 
@@ -23,6 +25,19 @@ export default async function MobilePage({ searchParams }: PageProps) {
       : "demo"
     : defaultMode;
   const initialNode = resolvedParams?.node ?? "T1";
+  const isNfcLaunch =
+    resolvedParams?.nfc === "1" || Boolean(resolvedParams?.node);
+  const initialTab =
+    resolvedParams?.tab === "register" || resolvedParams?.nfc === "1"
+      ? "register"
+      : "monitor";
 
-  return <MobileHome dataMode={initialMode} initialNodeId={initialNode} />;
+  return (
+    <MobileHome
+      dataMode={initialMode}
+      initialNodeId={initialNode}
+      initialTab={initialTab}
+      isNfcLaunch={isNfcLaunch}
+    />
+  );
 }

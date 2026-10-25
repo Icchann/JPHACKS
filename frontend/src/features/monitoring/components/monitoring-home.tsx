@@ -220,6 +220,7 @@ export function MonitoringHome({
   const [bonjourHost, setBonjourHost] = useState<string>("Slack.local");
   const [useBonjour, setUseBonjour] = useState<boolean>(true);
   const [customIp, setCustomIp] = useState<string>("");
+  const [qrTargetNode, setQrTargetNode] = useState<string>("");
 
   useEffect(() => {
     fetch("/api/network-ip")
@@ -235,7 +236,17 @@ export function MonitoringHome({
     customIp.trim() || (useBonjour ? bonjourHost : networkIp);
 
   const mobileUrl = useMemo(() => {
-    const querySuffix = dataMode === "test" ? "?mode=test" : "";
+    const params = new URLSearchParams();
+    if (dataMode === "test") {
+      params.set("mode", "test");
+    }
+    if (qrTargetNode) {
+      params.set("node", qrTargetNode);
+      params.set("tab", "register");
+      params.set("nfc", "1");
+    }
+    const queryStr = params.toString();
+    const querySuffix = queryStr ? `?${queryStr}` : "";
     if (typeof window === "undefined") {
       return `http://${effectiveHost}:3000/mobile${querySuffix}`;
     }
@@ -246,13 +257,12 @@ export function MonitoringHome({
         ? effectiveHost
         : hostname;
     return `${window.location.protocol}//${targetHost}${port}/mobile${querySuffix}`;
-  }, [dataMode, effectiveHost]);
+  }, [dataMode, effectiveHost, qrTargetNode]);
   const copyMobileUrl = () => {
     void navigator.clipboard.writeText(mobileUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  // 各機体の基準姿勢（キャリブレーションベクトル）の共有とリセット
   const [baselines, setBaselines] = useState<
     Record<string, { ax: number; ay: number; az: number; setAt: string }>
   >({});
@@ -1348,8 +1358,28 @@ export function MonitoringHome({
 
             <div className={styles.qrModalBody}>
               <p>
-                スマホの標準カメラをかざすだけで、専用の現場警報・GPS登録画面が直接開きます。
+                スマホの標準カメラ（またはNFCタグ）をかざすだけで、専用の現場警報・機体設置登録画面が直接開きます。
               </p>
+
+              <div className={styles.hostModeSwitcher}>
+                <button
+                  type="button"
+                  className={`${styles.modeBtn} ${qrTargetNode === "" ? styles.activeModeBtn : ""}`}
+                  onClick={() => setQrTargetNode("")}
+                >
+                  🚨 現場警報モニター画面を開く（/mobile）
+                </button>
+                {["T1", "S1", "T2", "S2"].map((nodeCode) => (
+                  <button
+                    key={nodeCode}
+                    type="button"
+                    className={`${styles.modeBtn} ${qrTargetNode === nodeCode ? styles.activeModeBtn : ""}`}
+                    onClick={() => setQrTargetNode(nodeCode)}
+                  >
+                    🏷️ 機体「{nodeCode}」のNFC設置登録URLを生成
+                  </button>
+                ))}
+              </div>
 
               <div className={styles.qrContainer}>
                 <QrCode size={220} value={mobileUrl} />
@@ -1365,7 +1395,6 @@ export function MonitoringHome({
                   {copied ? "コピー完了！" : "URLコピー"}
                 </button>
               </div>
-
               <div className={styles.hostModeSwitcher}>
                 <button
                   type="button"

@@ -57,7 +57,14 @@ describe("MobileHome", () => {
     expect(screen.getByText("正常監視中")).toBeInTheDocument();
   });
 
-  it("allows switching to GPS registration tab and setting venue preset", () => {
+  it("allows switching to GPS registration tab, NFC identification, and immediate submission without disabled lock", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "sensor-t1", sensor_code: "T1" }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
     render(<MobileHome dataMode="test" initialNodeId="T1" />);
 
     const regTabBtn = screen.getByRole("tab", { name: "📍 機体GPS設置登録" });
@@ -65,14 +72,41 @@ describe("MobileHome", () => {
 
     expect(screen.getByText("機体GPS・時刻固定登録")).toBeInTheDocument();
 
-    // Apply venue preset
-    const presetBtn = screen.getByRole("button", {
-      name: "🏛️ 会場（名古屋）座標を即時セット",
+    // Default venue coordinates are pre-populated so submit button is immediately touchable (not disabled)
+    const submitBtn = screen.getByRole("button", {
+      name: "この位置・時刻で機体を固定登録",
     });
-    fireEvent.click(presetBtn);
-
+    expect(submitBtn).not.toBeDisabled();
     expect(screen.getByText("35.154210° N")).toBeInTheDocument();
     expect(screen.getByText("136.966420° E")).toBeInTheDocument();
+
+    // Identify S1 via NFC tag button
+    const s1Chip = screen.getByRole("button", { name: "S1" });
+    fireEvent.click(s1Chip);
+    expect(screen.getByText("NFC認識済: S1")).toBeInTheDocument();
+
+    // Submit registration
+    fireEvent.click(submitBtn);
+    expect(
+      await screen.findByText(/機体 S1 を現在地.*でPC台帳に登録しました/),
+    ).toBeInTheDocument();
+  });
+
+  it("opens directly in registration tab when launched via NFC deep link", () => {
+    render(
+      <MobileHome
+        dataMode="test"
+        initialNodeId="T2"
+        initialTab="register"
+        isNfcLaunch={true}
+      />,
+    );
+
+    expect(
+      screen.getByText(/NFCタグから機体「T2」を自動識別しました/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("NFC認識済: T2")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("T2")).toBeInTheDocument();
   });
 
   it("allows setting baseline posture calibration and calculating relative angle", () => {

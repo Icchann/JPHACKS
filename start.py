@@ -137,7 +137,7 @@ def main() -> None:
     print("\n[2/3] Webサーバーを起動しています...")
     # Next.js 開発サーバーを起動
     process = subprocess.Popen(
-        [npm_bin, "run", "dev"],
+        [npm_bin, "run", "dev", "--", "--hostname", "0.0.0.0"],
         cwd=FRONTEND_DIR,
     )
 
