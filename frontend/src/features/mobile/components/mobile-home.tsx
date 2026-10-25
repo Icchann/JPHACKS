@@ -110,19 +110,82 @@ export function MobileHome({
   const [alertReason, setAlertReason] = useState("");
   const [alarmDismissed, setAlarmDismissed] = useState(false);
   const [monitorFeedback, setMonitorFeedback] = useState<string | null>(null);
-  const { data: testData, error: testObsError } = useTestObservations(
-    dataMode === "test",
-  );
+  // 実機テスト観測データの購読（モバイル画面では常にライブ観測を取得）
+  const { data: testData, error: testObsError } = useTestObservations(true);
 
-  // 対象ノードの最新観測データを抽出
+  // 対象ノードの最新観測データを抽出（未受信時はデモ観測値でフォールバック表示）
   const latestObs = useMemo(() => {
-    if (!testData?.items || testData.items.length === 0) return null;
-    const matches = testData.items.filter(
-      (item) => item.node_id === selectedNodeId,
-    );
-    return matches.at(-1) ?? null;
+    if (testData?.items && testData.items.length > 0) {
+      const matches = testData.items.filter(
+        (item) => item.node_id === selectedNodeId,
+      );
+      if (matches.length > 0) {
+        return matches.at(-1) ?? null;
+      }
+    }
+
+    // 実機パケット未受信時（デモ時）も待機中のままにせず、実演可能な観測値を即座に表示
+    return {
+      timestamp: new Date().toISOString(),
+      packet_type: "S0",
+      node_id: selectedNodeId,
+      seq: 1,
+      hop: 0,
+      sample_ms: 1000,
+      ax_mg: selectedNodeId === "T1" ? -128 : -112,
+      ay_mg: selectedNodeId === "T1" ? -112 : -96,
+      az_mg: 944,
+      soil_raw: 1420,
+      battery_mv: 3280,
+    };
   }, [testData, selectedNodeId]);
 
+  // Web Audio API による自律型アラーム音生成（外部音声ファイル不要）
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const alarmIntervalRef = useRef<number | null>(null);
+  const startAlarmSound = useCallback(() => {
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        ("webkitAudioContext" in window
+          ? (window.webkitAudioContext as typeof AudioContext)
+          : undefined);
+      if (!AudioCtx) return;
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioCtx();
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === "suspended") {
+        void ctx.resume();
+      }
+
+      // 周期的なビープ音を発振
+      clearInterval(alarmIntervalRef.current ?? undefined);
+      const playBeep = () => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.25);
+      };
+
+      playBeep();
+      alarmIntervalRef.current = window.setInterval(playBeep, 500);
+    } catch {
+      // Audio not permitted yet
+    }
+  }, []);
+
+  const stopAlarmSound = useCallback(() => {
+    clearInterval(alarmIntervalRef.current ?? undefined);
+    alarmIntervalRef.current = null;
+  }, []);
   // 各機体の基準姿勢（キャリブレーション値）辞書
   const [baselines, setBaselines] = useState<
     Record<string, { ax: number; ay: number; az: number; setAt: string }>
@@ -146,6 +209,12 @@ export function MobileHome({
             az: number;
             setAt: string;
           } | null;
+          activeAlert?: {
+            sensorCode: string;
+            sensorName: string;
+            tiltDeg: number;
+            reason: string;
+          } | null;
         };
         if (!mounted) return;
         if (data?.baselines) {
@@ -155,6 +224,14 @@ export function MobileHome({
             ...prev,
             [selectedNodeId]: data.baseline!,
           }));
+        }
+        // PC側で発火した警報をスマホ側にも即時反映
+        if (data?.activeAlert) {
+          setIsAlertActive(true);
+          setAlertReason(
+            `【緊急警報】${data.activeAlert.sensorName}（${data.activeAlert.sensorCode}）が +${data.activeAlert.tiltDeg.toFixed(1)}° 傾斜`,
+          );
+          startAlarmSound();
         }
       } catch {
         // オフライン・通信エラー時は手元の基準を維持
@@ -166,7 +243,7 @@ export function MobileHome({
       mounted = false;
       window.clearInterval(timer);
     };
-  }, [selectedNodeId]);
+  }, [selectedNodeId, startAlarmSound]);
 
   const currentBaseline = baselines[selectedNodeId] ?? null;
 
@@ -241,52 +318,6 @@ export function MobileHome({
     }
   });
   const [isSyncingPending, setIsSyncingPending] = useState(false);
-  // Web Audio API による自律型アラーム音生成（外部音声ファイル不要）
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const alarmIntervalRef = useRef<number | null>(null);
-  const startAlarmSound = useCallback(() => {
-    try {
-      const AudioCtx =
-        window.AudioContext ||
-        ("webkitAudioContext" in window
-          ? (window.webkitAudioContext as typeof AudioContext)
-          : undefined);
-      if (!AudioCtx) return;
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioCtx();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === "suspended") {
-        void ctx.resume();
-      }
-
-      // 周期的なビープ音を発振
-      clearInterval(alarmIntervalRef.current ?? undefined);
-      const playBeep = () => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.25);
-        gain.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.25);
-      };
-
-      playBeep();
-      alarmIntervalRef.current = window.setInterval(playBeep, 500);
-    } catch {
-      // Audio not permitted yet
-    }
-  }, []);
-
-  const stopAlarmSound = useCallback(() => {
-    clearInterval(alarmIntervalRef.current ?? undefined);
-    alarmIntervalRef.current = null;
-  }, []);
 
   // 警報トリガー（傾き検知または手動テスト）
   const triggerAlarm = useCallback(

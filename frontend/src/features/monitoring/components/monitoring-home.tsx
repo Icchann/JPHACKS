@@ -278,9 +278,18 @@ export function MonitoringHome({
             string,
             { ax: number; ay: number; az: number; setAt: string }
           >;
+          activeAlert?: {
+            sensorCode: string;
+            sensorName: string;
+            tiltDeg: number;
+            reason: string;
+          } | null;
         };
         if (mounted && data?.baselines) {
           setBaselines(data.baselines);
+        }
+        if (mounted && data?.activeAlert === null && manualEmergencyAlert) {
+          setManualEmergencyAlert(null);
         }
       } catch {
         // ignore network error
@@ -292,7 +301,7 @@ export function MonitoringHome({
       mounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [manualEmergencyAlert]);
 
   const resetNodeBaseline = useCallback(
     async (nodeId: string) => {
@@ -810,8 +819,26 @@ export function MonitoringHome({
   useEffect(() => {
     if (activeEmergencyAlert) {
       startPcAlarm();
+      void fetch("/api/test-baseline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activeAlert: {
+            sensorCode: activeEmergencyAlert.sensorCode,
+            sensorName: activeEmergencyAlert.sensorName,
+            tiltDeg: activeEmergencyAlert.tiltDeg,
+            reason: activeEmergencyAlert.reason,
+            triggeredAt: new Date().toISOString(),
+          },
+        }),
+      }).catch(() => {});
     } else {
       stopPcAlarm();
+      void fetch("/api/test-baseline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clearAlert: true }),
+      }).catch(() => {});
     }
     return () => stopPcAlarm();
   }, [activeEmergencyAlert, startPcAlarm, stopPcAlarm]);
