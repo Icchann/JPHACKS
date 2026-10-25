@@ -202,16 +202,33 @@ export function MonitoringHome({
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
+  // 実行環境のLAN IPアドレス自動取得（Venue Wi-Fi / テザリング）
+  const [networkIp, setNetworkIp] = useState<string>("192.168.92.11");
+  const [customIp, setCustomIp] = useState<string>("");
+
+  useEffect(() => {
+    fetch("/api/network-ip")
+      .then((res) => res.json())
+      .then((data: { ip?: string }) => {
+        if (data?.ip) setNetworkIp(data.ip);
+      })
+      .catch(() => {});
+  }, []);
+
+  const effectiveHost = customIp.trim() || networkIp;
+
   const mobileUrl = useMemo(() => {
-    if (typeof window === "undefined") return "http://172.20.10.2:3000/mobile";
+    if (typeof window === "undefined") {
+      return `http://${effectiveHost}:3000/mobile`;
+    }
     const hostname = window.location.hostname;
     const port = window.location.port ? `:${window.location.port}` : "";
     const targetHost =
       hostname === "localhost" || hostname === "127.0.0.1"
-        ? "172.20.10.2"
+        ? effectiveHost
         : hostname;
     return `${window.location.protocol}//${targetHost}${port}/mobile`;
-  }, []);
+  }, [effectiveHost]);
 
   const copyMobileUrl = () => {
     void navigator.clipboard.writeText(mobileUrl);
@@ -1011,6 +1028,33 @@ export function MonitoringHome({
                 </button>
               </div>
 
+              <div className={styles.ipConfigBox}>
+                <label htmlFor="custom-ip-input">
+                  LAN接続先IP（自動検出: <code>{networkIp}</code>）:
+                </label>
+                <div className={styles.ipInputRow}>
+                  <input
+                    id="custom-ip-input"
+                    className={styles.ipInput}
+                    placeholder={networkIp}
+                    value={customIp}
+                    onChange={(e) => setCustomIp(e.target.value)}
+                  />
+                  {customIp && (
+                    <button
+                      type="button"
+                      className={styles.resetIpBtn}
+                      onClick={() => setCustomIp("")}
+                    >
+                      自動に戻す
+                    </button>
+                  )}
+                </div>
+                <small className={styles.ipHelpText}>
+                  ※
+                  スマホとMacが同じWi-Fi（またはiPhoneのテザリング）に接続されている必要があります。
+                </small>
+              </div>
               <div className={styles.qrNfcGuide}>
                 <strong>🏷️ NFCタグで開く場合:</strong>
                 <span>
