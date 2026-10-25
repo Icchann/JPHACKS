@@ -1,129 +1,110 @@
-# API_SPEC.md — FastAPI REST API契約仕様書
+# API_SPEC.md — 現在のAPIと後続の契約
 
-> 文書版: 2.0 / 2026-10-24  
-> 対象: JPHACKS / FastAPI (Python 3.11) + Next.js BFF
+文書版：2.1 / 2026-10-26
 
----
+実装確認の整理であり、本番公開・認証・耐久性を保証するものではない。FastAPIの実スキーマは `/openapi.json` とコードを正本とする。Next.js内の基準共有APIは別契約。
 
-## 1. 共通仕様
+## 1. 接続先・保護
 
-- **ベースURL**:
-  - FastAPI直接: `http://127.0.0.1:8000`
-  - Next.js BFFプロキシ: `http://localhost:3000/api/backend/*`
-- **通信データ形式**: JSON (`application/json; charset=utf-8`)
-- **タイムスタンプ**: ISO 8601 UTC形式（例: `2026-10-24T12:00:00Z`）
-- **共通エラー形式**:
-  ```json
-  {
-    "error": {
-      "code": "VALIDATION_ERROR",
-      "message": "入力内容に誤りがあります",
-      "details": [
-        {
-          "location": ["body", "sensor_code"],
-          "message": "空白以外の文字を入力してください",
-          "type": "value_error"
-        }
-      ]
-    }
-  }
-  ```
-- **実証実験用ヘルス保護（一時トークン）**:
-  テスト環境の管理エンドポイントには `X-Test-Token` ヘッダーによる保護を適用（起動時に自動生成され、Next.js BFFサーバー経由で付与）。
+- FastAPI：標準の試験起動では `http://127.0.0.1:8000`。
+- Next.js：PCからは `http://localhost:3000`。スマホはPCへ到達するアドレスを使用する。
+- 台帳BFF：`/api/test-sensors`、`/api/test-sensors/[id]`。
+- 観測BFF：`/api/test-observations`。
+- 基準共有：`/api/test-baseline`（Next.js内のメモリ保持）。
 
----
+試験用トークンをBFFからFastAPIへ付ける処理は、利用者の認証とは別。特に基準共有APIも含め、LAN共有の許可・入力検証は改善・試験対象。
 
-## 2. エンドポイント一覧
+## 2. FastAPI
 
-### 2.1 システム管理
-| Method | パス | 説明 | 認証/ヘッダー |
-|---|---|---|---|
-| `GET` | `/health` | APIサーバーの稼働状態確認 | 不要 |
-| `GET` | `/openapi.json` | OpenAPI 3.1 仕様スキーマの出力 | 不要 |
+| Method      | パス                 | 説明                                                                |
+| ----------- | -------------------- | ------------------------------------------------------------------- |
+| GET         | `/health`            | API疎通。無線受信継続の保証ではない                                 |
+| GET         | `/openapi.json`      | 実装のスキーマ                                                      |
+| GET / POST  | `/sensors`           | 台帳一覧・作成                                                      |
+| GET / PATCH | `/sensors/{id}`      | 台帳の取得・編集                                                    |
+| GET         | `/test/observations` | test環境のCSV観測取得                                               |
+| DELETE      | `/test/observations` | test環境のCSV履歴クリア。データを失う操作で、試験でも無断実行しない |
 
-### 2.2 センサー台帳管理（FastAPI / SQLite）
-| Method | パス | 説明 | 認証/ヘッダー |
-|---|---|---|---|
-| `GET` | `/sensors` | 登録済みセンサー一覧（カーソルページネーション対応） | `X-Test-Token` |
-| `GET` | `/sensors/{id}` | 特定センサーの詳細および判定状態 | `X-Test-Token` |
-| `POST` | `/sensors` | センサーの新規手動登録（ID、名称、緯度、経度） | `X-Test-Token` |
-| `PATCH` | `/sensors/{id}` | センサー名称および設置座標の更新（監査ログ記録） | `X-Test-Token` |
+台帳等には試験用 `X-Test-Token` を使う。詳細な環境条件・返却値はルート実装で確認する。
 
-#### `POST /sensors` リクエスト例
+### 台帳作成の例（座標は架空）
+
 ```json
 {
   "sensor_code": "T1",
-  "name": "木ノード01（尾根側）",
+  "name": "樹木ノード01",
   "latitude": 35.1234567,
   "longitude": 137.9876543
 }
 ```
 
-#### `GET /sensors` レスポンス例
+現在の作成・編集スキーマはID・名称・座標を中心とする。スマホに表示・保存した設置日時・精度等が、すべてPCへ送られ永続化されるとはしない。
+
+台帳一覧は `items` と `next_cursor` を返す。状態フィールドは `observation_severity`、`communication_status`、`device_fault_status`、`low_battery`、`last_received_at` 等。列挙値・制約は `backend/app/schemas/sensors.py` に従う。
+
+### 観測取得
+
+- limit：デフォルト500、最大2000（FastAPIの現実装）。
+- node_id：任意の機体ID絞り込み。
+- sourceはdevice_test。土壌・電池の未計測はAPIでnull。
+- received_atはPC受信日時。sample_msは機体起動後時刻。
+
+レスポンス例（形式の説明用。実測ログではない）：
+
 ```json
 {
   "items": [
     {
-      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-      "sensor_code": "T1",
-      "name": "木ノード01（尾根側）",
-      "latitude": 35.1234567,
-      "longitude": 137.9876543,
-      "observation_severity": "unknown",
-      "communication_status": "unknown",
-      "low_battery": null,
-      "device_fault": null,
-      "last_received_at": null,
-      "source": "device_test",
-      "created_at": "2026-10-24T12:00:00Z",
-      "updated_at": "2026-10-24T12:00:00Z"
+      "received_at": "2026-10-25T06:00:00Z",
+      "node_id": "T1",
+      "seq": 1,
+      "hop": 0,
+      "sample_ms": 3115,
+      "ax_mg": -128,
+      "ay_mg": -176,
+      "az_mg": 928,
+      "soil_raw": null,
+      "battery_mv": null
     }
   ],
-  "next_cursor": null
-}
-```
-
-### 2.3 テレメトリ・観測生データ（実証実験用CSV読込）
-| Method | パス | 説明 | 認証/ヘッダー |
-|---|---|---|---|
-| `GET` | `/test/observations` | 受信CSVから最新N件のS0生データを取得 | `X-Test-Token` |
-
-#### クエリパラメータ
-- `limit`: 取得件数（デフォルト: 500、最大: 1000）
-- `node_id`: 特定ノードによる絞り込み（例: `T1`）
-
-#### レスポンス例
-```json
-{
+  "file_exists": true,
+  "invalid_row_count": 0,
   "source": "device_test",
-  "total_records": 128,
-  "items": [
-    {
-      "node_id": "T1",
-      "seq": 42,
-      "hop": 1,
-      "sample_ms": 125430,
-      "ax_mg": 15,
-      "ay_mg": -32,
-      "az_mg": 998,
-      "soil_raw": 1420,
-      "battery_mv": 3280,
-      "received_at": "2026-10-24T12:00:03Z"
-    }
-  ]
+  "refreshed_at": "2026-10-25T06:00:01Z"
 }
 ```
 
----
+時刻はタイムゾーン付きで扱う。スマホの表示用ローカル時刻文字列と、観測のISO形式日時を直接比較しない。
 
-## 3. 型同期手順（FastAPI ↔ TypeScript）
+## 3. Next.js基準共有API
 
-FastAPIのOpenAPI定義からTypeScript型を同期し、フロントエンドとバックエンドの型安全性を100%保証します。
+コード：`frontend/src/app/api/test-baseline/route.ts`。
+
+- GET：機体別baselinesとactiveAlertを返す。node_id指定時はその機体のbaselineも返す。
+- POST：node_idとax・ay・az、任意のsetAtで基準を保存する。activeAlertやclearAlertも扱う。
+- DELETE：node_id指定でその基準を削除、省略時は全基準を消す。警告も解除する。無断で実行しない。
+
+現在の保存先はサーバーメモリで、SQLiteではない。setAtは表示用の時刻文字列も許容する。要求ID、採用観測ID、操作日時と確定日時、認証、数値の有効性・鮮度等を保証する完成版契約ではない。
+
+## 4. 後続の同期・基準契約
+
+以下は要求で、現在のエンドポイントがすべて満たすとはしない。
+
+- 設置記録：位置精度、取得方法、日時、再設置・競合の履歴。
+- 登録予約：要求ID、機体ID、操作日時、未同期・照合・失敗等の状態。
+- 履歴採用：操作時刻付近の有効な観測を選び、元時刻・採用観測・時計差を記録する。
+- 履歴なし：利用者が現在値採用を明示選択し、勝手に置換しない。
+- 永続化・認証・再送の重複抑制・保存失敗の応答。
+
+`/api/sensors/sync` や外部メールを、実装済みのAPIとして前提にしない。現在のスマホWebの手動再送は、既存の台帳作成・更新を利用する。
+
+## 5. 型とエラー
+
+FastAPIのスキーマ生成とTypeScript型同期は契約の一部を検査する手段であり、全体の型安全性や実行時入力の100%保証ではない。Next.js独自APIも別途検証する。
 
 ```bash
-# 1. FastAPIからOpenAPIスキーマを出力
 python backend/scripts/export_openapi.py
-
-# 2. openapi-typescript でフロントエンド型を再生成
 npm --prefix frontend run api:types
 ```
+
+エラーの形はFastAPIのハンドラー・BFF・基準APIで異なる場合がある。未同期・認証失敗・API停止・機体未受信を一つの成功・正常へまとめない。
