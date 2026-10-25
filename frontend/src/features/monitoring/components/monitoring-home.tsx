@@ -10,6 +10,7 @@ import {
 } from "../../../components/ui/app-sidebar";
 import { Breadcrumbs } from "../../../components/ui/breadcrumbs";
 import { Button, KpiTile } from "../../../components/ui/ui-primitives";
+import { QrCode } from "../../../components/ui/qr-code";
 import {
   DEFAULT_LAYER_STATES,
   DEMO_MOUNTAINS,
@@ -132,6 +133,39 @@ export function MonitoringHome({
   const [newMapImageUrl, setNewMapImageUrl] = useState(
     "/maps/gozaisyo_toukousen.png",
   );
+  // スマホ誤アクセス防止 & QRモーダル用ステート
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const isMobile =
+        window.innerWidth < 768 ||
+        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+      setIsMobileDevice(isMobile);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  const mobileUrl = useMemo(() => {
+    if (typeof window === "undefined") return "http://172.20.10.2:3000/mobile";
+    const hostname = window.location.hostname;
+    const port = window.location.port ? `:${window.location.port}` : "";
+    const targetHost =
+      hostname === "localhost" || hostname === "127.0.0.1"
+        ? "172.20.10.2"
+        : hostname;
+    return `${window.location.protocol}//${targetHost}${port}/mobile`;
+  }, []);
+
+  const copyMobileUrl = () => {
+    void navigator.clipboard.writeText(mobileUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   // SQLiteから登録済み山林工区（下絵画像URL・境界範囲）を取得
   useEffect(() => {
@@ -466,6 +500,17 @@ export function MonitoringHome({
       />
 
       <section className={styles.workspace}>
+        {isMobileDevice && (
+          <aside className={styles.mobileWarningBanner} role="status">
+            <span>
+              📱
+              スマートフォンからアクセスされています。現場作業・実演用の専用画面を開きますか？
+            </span>
+            <Link className={styles.mobileWarningLink} href="/mobile">
+              現場専用画面（/mobile）へ移動 ↗
+            </Link>
+          </aside>
+        )}
         {unregisteredNodeIds.length > 0 && (
           <aside className={styles.unregisteredBanner} role="alert">
             <Icon name="alert" />
@@ -539,6 +584,14 @@ export function MonitoringHome({
                 ＋
               </button>
             </div>
+            <button
+              className={styles.openMobileModalBtn}
+              onClick={() => setIsQrModalOpen(true)}
+              title="スマートフォンでこの画面を開くためのQRコードを表示"
+              type="button"
+            >
+              📱 スマホで開く（QR）
+            </button>
 
             <LayerController
               activePreset={activePreset}
@@ -774,6 +827,74 @@ export function MonitoringHome({
                 </button>
               </footer>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 現場スマートフォン接続用 QRコード & NFCモーダル */}
+      {isQrModalOpen && (
+        <div
+          className={styles.modalBackdrop}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsQrModalOpen(false);
+          }}
+        >
+          <div
+            aria-labelledby="qr-modal-title"
+            aria-modal="true"
+            className={styles.modal}
+            role="dialog"
+          >
+            <header className={styles.modalHeader}>
+              <h3 id="qr-modal-title">📱 現場スマホで開く（QRコード & NFC）</h3>
+              <button
+                className={styles.modalCloseBtn}
+                onClick={() => setIsQrModalOpen(false)}
+                type="button"
+              >
+                ✕
+              </button>
+            </header>
+
+            <div className={styles.qrModalBody}>
+              <p>
+                スマホの標準カメラをかざすだけで、専用の現場警報・GPS登録画面が直接開きます。
+              </p>
+
+              <div className={styles.qrContainer}>
+                <QrCode size={220} value={mobileUrl} />
+              </div>
+
+              <div className={styles.qrUrlBox}>
+                <span className={styles.qrUrlText}>{mobileUrl}</span>
+                <button
+                  className={styles.copyUrlBtn}
+                  onClick={copyMobileUrl}
+                  type="button"
+                >
+                  {copied ? "コピー完了！" : "URLコピー"}
+                </button>
+              </div>
+
+              <div className={styles.qrNfcGuide}>
+                <strong>🏷️ NFCタグで開く場合:</strong>
+                <span>
+                  NFCタグを機体に貼り付ける場合、このURL（
+                  <code>{mobileUrl}</code>
+                  ）をNFCタグに書き込んでおくと、スマホをかざすだけでSafariが自動起動します。
+                </span>
+              </div>
+            </div>
+
+            <footer className={styles.modalFooter}>
+              <button
+                className={styles.cancelBtn}
+                onClick={() => setIsQrModalOpen(false)}
+                type="button"
+              >
+                閉じる
+              </button>
+            </footer>
           </div>
         </div>
       )}

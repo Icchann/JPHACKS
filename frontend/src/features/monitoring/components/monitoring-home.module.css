@@ -1036,3 +1036,129 @@
     transition: none;
   }
 }
+
+.mobileWarningBanner {
+  background: #fef3c7;
+  border-bottom: 2px solid #f59e0b;
+  color: #92400e;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 50;
+}
+
+.mobileWarningLink {
+  background: #d97706;
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mobileWarningLink:hover {
+  background: #b45309;
+}
+
+.openMobileModalBtn {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #10b981;
+  background: #ecfdf5;
+  color: #065f46;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.openMobileModalBtn:hover {
+  background: #d1fae5;
+  border-color: #059669;
+}
+
+.qrModalBody {
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+}
+
+.qrContainer {
+  background: #ffffff;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.qrUrlBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 380px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.qrUrlText {
+  flex: 1;
+  font-size: 13px;
+  font-family: monospace;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.copyUrlBtn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copyUrlBtn:hover {
+  background: #1d4ed8;
+}
+
+.qrNfcGuide {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 12px;
+  color: #166534;
+  width: 100%;
+  max-width: 380px;
+  line-height: 1.5;
+}
+
+.qrNfcGuide strong {
+  display: block;
+  margin-bottom: 4px;
+}

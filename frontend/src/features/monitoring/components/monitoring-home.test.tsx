@@ -186,4 +186,20 @@ describe("MonitoringHome", () => {
     expect(screen.queryByText("DEMO-001")).not.toBeInTheDocument();
     expect(screen.queryByText("DEMO-005")).not.toBeInTheDocument();
   });
+
+  it("「📱 スマホで開く（QR）」ボタンを押すとQRコード＆NFCモーダルが開く", () => {
+    render(<MonitoringHome dataMode="demo" />);
+
+    const openBtn = screen.getByRole("button", {
+      name: "📱 スマホで開く（QR）",
+    });
+    fireEvent.click(openBtn);
+
+    expect(
+      screen.getByRole("dialog", {
+        name: "📱 現場スマホで開く（QRコード & NFC）",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/NFCタグで開く場合/)).toBeInTheDocument();
+  });
 });
