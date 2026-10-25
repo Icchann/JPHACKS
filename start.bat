@@ -1,18 +1,25 @@
 @echo off
 chcp 65001 >nul
-title 山網（Sanmou）システム起動
+title 山網（Sanmou）実機メイン起動
 echo ====================================================
-echo   🌲 山網（Sanmou）山林監視システム を起動します
+echo   🌲 山網（Sanmou）実機シリアル受信・メイン起動
 echo ====================================================
 echo.
-echo ブラウザが自動的に開くまで数秒お待ちください...
-echo 終了するときは、このウィンドウを閉じるか [Ctrl + C] を押してください。
+echo 集約機をPCのUSBに接続した状態で実行してください。
+echo.
+echo 【PCで検出されたシリアルポート】
+backend\.venv\Scripts\python -m serial.tools.list_ports 2>nul || echo (ポート一覧の取得準備中)
+echo.
+set /p COM_PORT="集約機のCOMポート番号を入力してください (例: COM3) [未入力でCOM3]: "
+if "%COM_PORT%"=="" set COM_PORT=COM3
+echo.
+echo %COM_PORT% でUSBシリアル受信を開始し、システムを起動します...
 echo.
 
-python start.py
+python scripts\run_test_environment.py --port %COM_PORT%
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo [お知らせ] 起動が終了しました。
+    echo [お知らせ] プロセスが終了しました。
     pause
 )
