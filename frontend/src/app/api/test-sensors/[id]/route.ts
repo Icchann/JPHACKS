@@ -7,3 +7,11 @@ export async function PATCH(
   const { id } = await context.params;
   return forwardTestApi(`/sensors/${encodeURIComponent(id)}`, request);
 }
+
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  return forwardTestApi(`/sensors/${encodeURIComponent(id)}`, request);
+}

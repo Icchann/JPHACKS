@@ -377,6 +377,34 @@
   background: var(--surface-soft);
 }
 
+.deleteSensorBtn {
+  color: var(--danger) !important;
+  font-weight: 700;
+  transition: background 0.15s ease;
+}
+
+.deleteSensorBtn:hover {
+  background: #fef2f2 !important;
+}
+
+.clearObsBtn {
+  min-height: 38px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.clearObsBtn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
 .sensorSectionFooter {
   display: flex;
   min-height: 45px;

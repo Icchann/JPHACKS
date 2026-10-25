@@ -238,6 +238,55 @@ export function SensorManagement({
       lastEditorTriggerRef.current?.focus();
     };
   }, [editor]);
+  const handleDeleteSensor = async (sensor: ManagedSensor) => {
+    const ok = window.confirm(
+      `センサー「${sensor.name} (${sensor.sensorCode})」を台帳から削除しますか？\n（削除すると、同じIDで新しく正常に登録できるようになります）`,
+    );
+    if (!ok) return;
+    if (dataMode === "demo") {
+      setSensors((current) => current.filter((item) => item.id !== sensor.id));
+      setStatusMessage(`✓ センサー「${sensor.sensorCode}」を削除しました`);
+    } else {
+      try {
+        const response = await fetch(
+          `/api/test-sensors/${encodeURIComponent(sensor.id)}`,
+          { method: "DELETE" },
+        );
+        if (response.ok || response.status === 204) {
+          setSensors((current) =>
+            current.filter((item) => item.id !== sensor.id),
+          );
+          setStatusMessage(
+            `✓ センサー「${sensor.sensorCode}」を台帳から削除しました。同じIDで再登録できます。`,
+          );
+        } else {
+          setApiError("センサーの削除に失敗しました");
+        }
+      } catch {
+        setApiError("センサーAPIへ接続できませんでした");
+      }
+    }
+  };
+
+  const handleClearObservations = async () => {
+    const ok = window.confirm(
+      "受信済みの古い観測履歴（CSV）をすべてクリアしますか？\n（過去の異常値や古いログをリセットし、現在受信中のデータのみに初期化します）",
+    );
+    if (!ok) return;
+
+    try {
+      const response = await fetch("/api/test-observations", {
+        method: "DELETE",
+      });
+      if (response.ok || response.status === 204) {
+        setStatusMessage("✓ 古い観測履歴をクリアしました。");
+      } else {
+        setApiError("観測履歴のクリアに失敗しました");
+      }
+    } catch {
+      setApiError("観測APIへ接続できませんでした");
+    }
+  };
 
   const filteredSensors = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("ja-JP");
@@ -525,26 +574,36 @@ export function SensorManagement({
                 <p>SENSORS</p>
                 <h2 id="sensor-list">センサー一覧</h2>
               </div>
-              <label className={styles.searchBox}>
-                <Icon name="search" />
-                <span className="sr-only">センサーを検索</span>
-                <input
-                  aria-label="センサーを検索"
-                  placeholder="ID・名称で検索"
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-                {query ? (
-                  <button
-                    aria-label="検索をクリア"
-                    type="button"
-                    onClick={() => setQuery("")}
-                  >
-                    ×
-                  </button>
-                ) : null}
-              </label>
+              <div className={styles.headerControls}>
+                <Button
+                  variant="secondary"
+                  className={styles.clearObsBtn}
+                  onClick={handleClearObservations}
+                  title="過去の不要な受信CSVレコードを初期化します"
+                >
+                  🗑️ 受信履歴クリア
+                </Button>
+                <label className={styles.searchBox}>
+                  <Icon name="search" />
+                  <span className="sr-only">センサーを検索</span>
+                  <input
+                    aria-label="センサーを検索"
+                    placeholder="ID・名称で検索"
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                  {query ? (
+                    <button
+                      aria-label="検索をクリア"
+                      type="button"
+                      onClick={() => setQuery("")}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </label>
+              </div>
             </div>
 
             {isLoading ? (
@@ -648,6 +707,14 @@ export function SensorManagement({
                       >
                         編集
                       </Button>
+                      <Button
+                        aria-label={`${sensor.sensorCode}を削除`}
+                        variant="ghost"
+                        className={styles.deleteSensorBtn}
+                        onClick={() => handleDeleteSensor(sensor)}
+                      >
+                        削除
+                      </Button>
                     </footer>
                   </li>
                 ))}
@@ -658,7 +725,7 @@ export function SensorManagement({
 
             <footer className={styles.sensorSectionFooter}>
               <span>{filteredSensors.length}件を表示</span>
-              <span>論理削除は後続フェーズで実装</span>
+              <span>削除・再登録に対応</span>
             </footer>
           </section>
         </div>

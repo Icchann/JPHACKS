@@ -9,10 +9,18 @@ import styles from "./sensor-detail-modal.module.css";
 type SensorDetailModalProps = {
   sensor: DemoSensor | null;
   onClose: () => void;
+  onResetBaseline?: (sensorCode: string) => void;
+  onDeleteSensor?: (sensorId: string) => void;
+  isCalibrated?: boolean;
 };
-
 // マーカークリック時に地図コンテキストを維持したまま、ダイジェスト推移と林業リスクを確認できるようにします。
-export function SensorDetailModal({ sensor, onClose }: SensorDetailModalProps) {
+export function SensorDetailModal({
+  sensor,
+  onClose,
+  onResetBaseline,
+  onDeleteSensor,
+  isCalibrated = false,
+}: SensorDetailModalProps) {
   const titleId = useId();
 
   // Escapeキーでモーダルを閉じる
@@ -164,9 +172,20 @@ export function SensorDetailModal({ sensor, onClose }: SensorDetailModalProps) {
               </strong>
               <span className={styles.metricSub}>
                 {sensor.source === "device_test"
-                  ? "仮算出（基準姿勢未設定）"
+                  ? isCalibrated
+                    ? "基準直立・監視中"
+                    : "仮算出（基準未設定）"
                   : "しきい値: +2.00°"}
               </span>
+              {sensor.source === "device_test" && onResetBaseline && (
+                <button
+                  type="button"
+                  className={styles.resetAngleModalBtn}
+                  onClick={() => onResetBaseline(sensor.sensorCode)}
+                >
+                  🎯 角度を0°にリセット
+                </button>
+              )}
             </div>
 
             <div className={styles.metricCard}>
@@ -301,6 +320,15 @@ export function SensorDetailModal({ sensor, onClose }: SensorDetailModalProps) {
         </div>
 
         <footer className={styles.dialogFooter}>
+          {sensor.source === "device_test" && onDeleteSensor && (
+            <button
+              className={styles.deleteSensorModalBtn}
+              onClick={() => onDeleteSensor(sensor.id)}
+              type="button"
+            >
+              🗑️ 台帳から削除
+            </button>
+          )}
           <Link
             className={styles.fullDetailLink}
             href={`/sensors/${encodeURIComponent(sensor.id)}?from=map`}

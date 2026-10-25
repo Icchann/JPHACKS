@@ -134,3 +134,37 @@ def test_rejects_a_request_without_test_token(tmp_path: Path) -> None:
     response = client.get("/test/observations")
 
     assert response.status_code == 401
+
+
+def test_clear_test_observations(tmp_path: Path) -> None:
+    csv_path = tmp_path / "observations.csv"
+    _use_settings(environment="test", csv_path=csv_path)
+    _write_csv(
+        csv_path,
+        [
+            [
+                "2026-09-30T18:30:11.171+09:00",
+                "T1",
+                1,
+                0,
+                3115,
+                -128,
+                -176,
+                928,
+                -1,
+                -1,
+                "S0,T1,1,0,3115,-128,-176,928,-1,-1",
+            ],
+        ],
+    )
+    # 削除前
+    res_before = client.get("/test/observations", headers={"X-Test-Token": TEST_TOKEN})
+    assert len(res_before.json()["items"]) == 1
+
+    # DELETE でクリア
+    del_res = client.delete("/test/observations", headers={"X-Test-Token": TEST_TOKEN})
+    assert del_res.status_code == 204
+
+    # 削除後（アイテムが空であること）
+    res_after = client.get("/test/observations", headers={"X-Test-Token": TEST_TOKEN})
+    assert len(res_after.json()["items"]) == 0

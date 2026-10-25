@@ -124,3 +124,26 @@ def test_sensor_api_is_hidden_in_dev_environment(tmp_path: Path) -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
+
+
+def test_delete_sensor_and_allow_re_registration(sensor_client: tuple[TestClient, str]) -> None:
+    client, _database_url = sensor_client
+    payload = _payload(sensor_code="T1-DEL")
+
+    # 作成
+    create_res = client.post("/sensors", json=payload, headers=_headers())
+    assert create_res.status_code == 201
+    sensor_id = create_res.json()["id"]
+
+    # 削除
+    del_res = client.delete(f"/sensors/{sensor_id}", headers=_headers())
+    assert del_res.status_code == 204
+
+    # 削除後は取得できないこと
+    get_res = client.get(f"/sensors/{sensor_id}", headers=_headers())
+    assert get_res.status_code == 404
+
+    # 同じ sensor_code で再登録できること（一意制約エラーにならないこと）
+    re_create_res = client.post("/sensors", json=payload, headers=_headers())
+    assert re_create_res.status_code == 201
+    assert re_create_res.json()["sensor_code"] == "T1-DEL"

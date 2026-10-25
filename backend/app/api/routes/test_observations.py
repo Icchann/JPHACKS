@@ -54,3 +54,32 @@ async def list_test_observations(
         invalid_row_count=result.invalid_row_count,
         refreshed_at=datetime.now(UTC),
     )
+
+
+@router.delete(
+    "/observations",
+    status_code=204,
+    responses={
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+    },
+)
+async def clear_test_observations(
+    settings: Settings = Depends(get_settings),  # noqa: B008
+    test_token: str | None = Header(default=None, alias="X-Test-Token"),  # noqa: B008
+) -> None:
+    """test環境の受信CSV履歴をクリア（ヘッダーのみ再作成）する。"""
+
+    if settings.app_environment != "test":
+        raise HTTPException(status_code=404, detail="Not Found")
+    if not settings.sanmou_test_api_token:
+        raise HTTPException(status_code=503, detail="test API token is not configured")
+    if test_token is None or not compare_digest(test_token, settings.sanmou_test_api_token):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    csv_path = settings.observation_csv_path
+    if csv_path.exists():
+        from app.device.csv_store import CSV_COLUMNS
+
+        csv_path.write_text(",".join(CSV_COLUMNS) + "\n", encoding="utf-8")

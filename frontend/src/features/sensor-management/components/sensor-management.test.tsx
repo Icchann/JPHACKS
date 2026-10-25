@@ -199,4 +199,16 @@ describe("SensorManagement", () => {
     fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
     expect(submitButton).toHaveFocus();
   });
+
+  it("「削除」ボタンをクリックすると確認後にセンサーが一覧から削除される", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<SensorManagement dataMode="demo" />);
+
+    expect(screen.getByText("DEMO-001")).toBeInTheDocument();
+    const deleteBtn = screen.getByRole("button", { name: "DEMO-001を削除" });
+    fireEvent.click(deleteBtn);
+
+    expect(screen.queryByText("DEMO-001")).not.toBeInTheDocument();
+    expect(screen.getByText(/DEMO-001.*削除しました/)).toBeInTheDocument();
+  });
 });

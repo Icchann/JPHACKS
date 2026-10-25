@@ -191,3 +191,29 @@ def update_sensor(
     session.commit()
     session.refresh(sensor)
     return _response(sensor)
+
+
+@router.delete(
+    "/{sensor_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def delete_sensor(
+    sensor_id: str,
+    session: Session = Depends(get_db_session),  # noqa: B008
+) -> None:
+    """センサーを削除し、同じIDでの再登録を可能にする。"""
+
+    sensor = _active_sensor_or_404(session, sensor_id)
+    before = _snapshot(sensor)
+    session.add(
+        AuditLog(
+            action="sensor.deleted",
+            target_type="sensor",
+            target_id=sensor.id,
+            before_json=before,
+            after_json=None,
+        )
+    )
+    session.delete(sensor)
+    session.commit()

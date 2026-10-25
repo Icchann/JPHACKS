@@ -239,6 +239,80 @@ export function MonitoringHome({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+  // 各機体の基準姿勢（キャリブレーションベクトル）の共有とリセット
+  const [baselines, setBaselines] = useState<
+    Record<string, { ax: number; ay: number; az: number; setAt: string }>
+  >({});
+
+  useEffect(() => {
+    let mounted = true;
+    const loadBaselines = async () => {
+      try {
+        const res = await fetch("/api/test-baseline", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          baselines?: Record<
+            string,
+            { ax: number; ay: number; az: number; setAt: string }
+          >;
+        };
+        if (mounted && data?.baselines) {
+          setBaselines(data.baselines);
+        }
+      } catch {
+        // ignore network error
+      }
+    };
+    void loadBaselines();
+    const interval = setInterval(loadBaselines, 1500);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const resetNodeBaseline = useCallback(
+    async (nodeId: string) => {
+      const latestItem = testObservations?.items
+        ?.filter((it) => it.node_id === nodeId)
+        .at(-1);
+
+      if (!latestItem) {
+        alert(
+          `機体「${nodeId}」の観測データがまだ届いていません。受信開始をお待ちください。`,
+        );
+        return;
+      }
+      if (
+        latestItem.ax_mg === 0 &&
+        latestItem.ay_mg === 0 &&
+        latestItem.az_mg === 0
+      ) {
+        alert("seq=0の全軸ゼロ初期化値は基準姿勢にできません。");
+        return;
+      }
+
+      const newBaseline = {
+        ax: latestItem.ax_mg,
+        ay: latestItem.ay_mg,
+        az: latestItem.az_mg,
+        setAt: new Date().toLocaleTimeString("ja-JP"),
+      };
+
+      setBaselines((prev) => ({ ...prev, [nodeId]: newBaseline }));
+
+      try {
+        await fetch("/api/test-baseline", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ node_id: nodeId, ...newBaseline }),
+        });
+      } catch {
+        // ignore sync error
+      }
+    },
+    [testObservations],
+  );
 
   // SQLiteから登録済み山林工区（下絵画像URL・境界範囲）を取得
   useEffect(() => {
@@ -423,15 +497,49 @@ export function MonitoringHome({
         live.soil_raw === null || live.soil_raw === -1
           ? null
           : Math.min(Math.max(live.soil_raw / 2000, 0), 1.0);
-      const horizontalAcc = Math.sqrt(live.ax_mg ** 2 + live.ay_mg ** 2);
-      const tiltDeg = isZeroAcc
-        ? null
-        : Math.round(
+      const nodeBaseline = baselines[sensor.sensorCode];
+      let tiltDeg: number | null = null;
+      let severity: ObservationSeverity = "normal";
+
+      if (isZeroAcc) {
+        tiltDeg = null;
+      } else if (nodeBaseline) {
+        // 確定した基準姿勢ベクトルとの成す角（度）を計算 (内積・コサイン類似度)
+        const dot =
+          live.ax_mg * nodeBaseline.ax +
+          live.ay_mg * nodeBaseline.ay +
+          live.az_mg * nodeBaseline.az;
+        const normCurr = Math.sqrt(
+          live.ax_mg ** 2 + live.ay_mg ** 2 + live.az_mg ** 2,
+        );
+        const normBase = Math.sqrt(
+          nodeBaseline.ax ** 2 + nodeBaseline.ay ** 2 + nodeBaseline.az ** 2,
+        );
+        if (normCurr > 0 && normBase > 0) {
+          const cosTheta = Math.max(
+            -1.0,
+            Math.min(1.0, dot / (normCurr * normBase)),
+          );
+          tiltDeg =
+            Math.round(((Math.acos(cosTheta) * 180) / Math.PI) * 10) / 10;
+          if (tiltDeg >= 15.0) {
+            severity = "danger";
+          } else if (tiltDeg >= 5.0) {
+            severity = "caution";
+          }
+        }
+      } else {
+        // 基準未設定時は水平面に対する仮傾斜
+        const horizontalAcc = Math.sqrt(live.ax_mg ** 2 + live.ay_mg ** 2);
+        tiltDeg =
+          Math.round(
             ((Math.atan2(horizontalAcc, Math.max(Math.abs(live.az_mg), 1)) *
               180) /
               Math.PI) *
-              100,
-          ) / 100;
+              10,
+          ) / 10;
+      }
+
       const batteryPct =
         live.battery_mv === null || live.battery_mv === -1
           ? null
@@ -439,9 +547,6 @@ export function MonitoringHome({
               Math.max(Math.round(((live.battery_mv - 2800) / 800) * 100), 0),
               100,
             );
-      // 実測値は校正値・基準姿勢が未確定のため、危険判定を下さず未判定（normal）とする
-      const severity: ObservationSeverity = "normal";
-
       // 最終受信からの経過時間で通信状態を判定（60秒以上経過で受信途絶）
       const receivedEpoch = new Date(live.received_at).getTime();
       const currentEpoch = new Date(testObservations.refreshed_at).getTime();
@@ -462,10 +567,40 @@ export function MonitoringHome({
         communicationStatus: commStatus,
       };
     });
-  }, [dataMode, filteredSensors, testObservations]);
+  }, [baselines, dataMode, filteredSensors, testObservations]);
 
   const visibleSensorIds = useMemo(
     () => new Set(activeSensors.map((sensor) => sensor.id)),
+    [activeSensors],
+  );
+
+  const handleDeleteSensorFromMap = useCallback(
+    async (sensorId: string) => {
+      const targetSensor = activeSensors.find((s) => s.id === sensorId);
+      const name = targetSensor?.name ?? sensorId;
+      const code = targetSensor?.sensorCode ?? "";
+      if (
+        !window.confirm(
+          `センサー「${name} (${code})」を台帳から削除しますか？\n（削除すると、同じIDで新しく正常に登録できるようになります）`,
+        )
+      ) {
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/test-sensors/${encodeURIComponent(sensorId)}`,
+          { method: "DELETE" },
+        );
+        if (res.ok || res.status === 204) {
+          setRegisteredSensors((prev) => prev.filter((s) => s.id !== sensorId));
+          setSelectedModalSensor(null);
+        } else {
+          alert("センサーの削除に失敗しました");
+        }
+      } catch {
+        alert("センサーAPIへ接続できませんでした");
+      }
+    },
     [activeSensors],
   );
   const severityCounts = useMemo(
@@ -738,6 +873,15 @@ export function MonitoringHome({
             >
               📱 スマホで開く（QR）
             </button>
+            <button
+              className={styles.resetT1AngleBtn}
+              onClick={() => resetNodeBaseline("T1")}
+              title="タニさんが直立した状態でクリックすると、T1の角度を0.0°にリセット（キャリブレーション確定）します"
+              type="button"
+            >
+              🎯 T1角度リセット(0°)
+              {baselines["T1"] ? ` [${baselines["T1"].setAt}確定]` : ""}
+            </button>
 
             <LayerController
               activePreset={activePreset}
@@ -896,7 +1040,12 @@ export function MonitoringHome({
 
       {/* マーカークリック時のハイブリッド詳細推移モーダル */}
       <SensorDetailModal
+        isCalibrated={Boolean(
+          selectedModalSensor && baselines[selectedModalSensor.sensorCode],
+        )}
         onClose={() => setSelectedModalSensor(null)}
+        onDeleteSensor={handleDeleteSensorFromMap}
+        onResetBaseline={resetNodeBaseline}
         sensor={selectedModalSensor}
       />
 
