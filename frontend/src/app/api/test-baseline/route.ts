@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 // メモリ内で各ノードの基準姿勢（キャリブレーションベクトル）をPCとスマホ間で共有
 type BaselineData = {
   ax: number;
@@ -8,8 +10,13 @@ type BaselineData = {
   setAt: string;
 };
 
-const baselines: Record<string, BaselineData> = {};
-
+// HMRやワーカー再評価で状態が消えないよう globalThis 上に辞書を保持する
+const globalForBaseline = globalThis as unknown as {
+  __sanmouBaselines?: Record<string, BaselineData>;
+};
+const baselines: Record<string, BaselineData> =
+  globalForBaseline.__sanmouBaselines ??
+  (globalForBaseline.__sanmouBaselines = {});
 export function GET(request: Request) {
   const url = new URL(request.url);
   const nodeId = url.searchParams.get("node_id");
@@ -57,9 +64,14 @@ export async function POST(request: Request) {
 export function DELETE(request: Request) {
   const url = new URL(request.url);
   const nodeId = url.searchParams.get("node_id");
-  if (nodeId && baselines[nodeId]) {
-    delete baselines[nodeId];
+  if (nodeId) {
+    if (baselines[nodeId]) {
+      delete baselines[nodeId];
+    }
     return NextResponse.json({ success: true, deleted: nodeId });
   }
-  return NextResponse.json({ success: true });
+  Object.keys(baselines).forEach((key) => {
+    delete baselines[key];
+  });
+  return NextResponse.json({ success: true, cleared: true });
 }

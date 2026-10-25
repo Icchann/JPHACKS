@@ -16,8 +16,21 @@ describe("SensorManagement", () => {
   });
 
   it("test環境では検証用DBのセンサーを読み込む", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.startsWith("/api/test-observations")) {
+        return new Response(
+          JSON.stringify({
+            items: [],
+            file_exists: false,
+            invalid_row_count: 0,
+            source: "device_test",
+            refreshed_at: "2026-10-12T08:30:00Z",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
         JSON.stringify({
           items: [
             {
@@ -37,8 +50,8 @@ describe("SensorManagement", () => {
           next_cursor: null,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
-    );
+      );
+    });
 
     render(<SensorManagement dataMode="test" />);
 
@@ -46,6 +59,9 @@ describe("SensorManagement", () => {
     expect(screen.getByText("test環境")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("T1")).toBeInTheDocument());
     expect(screen.getByText("1件を表示")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "T1の状態を確認" }),
+    ).toHaveAttribute("href", "/sensors/test-sensor-id?from=sensors");
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "/api/test-sensors?limit=200",
       { cache: "no-store" },
@@ -210,5 +226,43 @@ describe("SensorManagement", () => {
 
     expect(screen.queryByText("DEMO-001")).not.toBeInTheDocument();
     expect(screen.getByText(/DEMO-001.*削除しました/)).toBeInTheDocument();
+  });
+
+  it("test環境で受信履歴クリアを行うと観測データと基準姿勢を両方リセットする", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.startsWith("/api/test-sensors")) {
+          return new Response(
+            JSON.stringify({ items: [], next_cursor: null }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (url === "/api/test-observations") {
+          return new Response(null, { status: 204 });
+        }
+        return new Response(JSON.stringify({ success: true }), { status: 200 });
+      });
+
+    render(<SensorManagement dataMode="test" />);
+    await waitFor(() =>
+      expect(screen.getByText("0件を表示")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /受信履歴クリア/ }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "古い観測履歴をクリアしました。",
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/test-observations", {
+      method: "DELETE",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/test-baseline", {
+      method: "DELETE",
+    });
   });
 });

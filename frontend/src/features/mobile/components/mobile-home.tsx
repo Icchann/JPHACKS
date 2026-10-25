@@ -26,8 +26,11 @@ export function MobileHome({
   const [selectedNodeId, setSelectedNodeId] = useState(initialNodeId);
   const [isAlertActive, setIsAlertActive] = useState(false);
   const [alertReason, setAlertReason] = useState("");
-  // 実機テスト観測データの購読
-  const { data: testData } = useTestObservations();
+  const [alarmDismissed, setAlarmDismissed] = useState(false);
+  // 実機テスト観測データの購読（デモモード時は不要なポーリングを抑制）
+  const { data: testData, error: testObsError } = useTestObservations(
+    dataMode === "test",
+  );
 
   // 対象ノードの最新観測データを抽出
   const latestObs = useMemo(() => {
@@ -37,34 +40,53 @@ export function MobileHome({
     );
     return matches.at(-1) ?? null;
   }, [testData, selectedNodeId]);
-  // 基準姿勢（キャリブレーション値）
-  const [baseline, setBaseline] = useState<{
-    ax: number;
-    ay: number;
-    az: number;
-    setAt: string;
-  } | null>(null);
 
-  // サーバーに保存された最新基準姿勢を取得
+  // 各機体の基準姿勢（キャリブレーション値）辞書
+  const [baselines, setBaselines] = useState<
+    Record<string, { ax: number; ay: number; az: number; setAt: string }>
+  >({});
+
+  // サーバーに保存された最新基準姿勢を定期取得（PCとの双方向同期）
   useEffect(() => {
-    fetch(`/api/test-baseline?node_id=${encodeURIComponent(selectedNodeId)}`)
-      .then((res) => res.json())
-      .then(
-        (data: {
+    let mounted = true;
+    const loadBaselines = async () => {
+      try {
+        const res = await fetch("/api/test-baseline", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          baselines?: Record<
+            string,
+            { ax: number; ay: number; az: number; setAt: string }
+          >;
           baseline?: {
             ax: number;
             ay: number;
             az: number;
             setAt: string;
           } | null;
-        }) => {
-          if (data?.baseline) {
-            setBaseline(data.baseline);
-          }
-        },
-      )
-      .catch(() => {});
+        };
+        if (!mounted) return;
+        if (data?.baselines) {
+          setBaselines((prev) => ({ ...prev, ...data.baselines }));
+        } else if (data?.baseline) {
+          setBaselines((prev) => ({
+            ...prev,
+            [selectedNodeId]: data.baseline!,
+          }));
+        }
+      } catch {
+        // オフライン・通信エラー時は手元の基準を維持
+      }
+    };
+    void loadBaselines();
+    const timer = window.setInterval(loadBaselines, 2000);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
   }, [selectedNodeId]);
+
+  const currentBaseline = baselines[selectedNodeId] ?? null;
 
   // 基準姿勢からの角度変位（内積・コサイン類似度）
   const relativeTiltDeg = useMemo(() => {
@@ -77,7 +99,7 @@ export function MobileHome({
     ) {
       return null;
     }
-    if (!baseline) {
+    if (!currentBaseline) {
       const horiz = Math.sqrt(latestObs.ax_mg ** 2 + latestObs.ay_mg ** 2);
       return (
         (Math.atan2(horiz, Math.max(Math.abs(latestObs.az_mg), 1)) * 180) /
@@ -85,47 +107,21 @@ export function MobileHome({
       );
     }
     const dot =
-      latestObs.ax_mg * baseline.ax +
-      latestObs.ay_mg * baseline.ay +
-      latestObs.az_mg * baseline.az;
+      latestObs.ax_mg * currentBaseline.ax +
+      latestObs.ay_mg * currentBaseline.ay +
+      latestObs.az_mg * currentBaseline.az;
     const normCurr = Math.sqrt(
       latestObs.ax_mg ** 2 + latestObs.ay_mg ** 2 + latestObs.az_mg ** 2,
     );
     const normBase = Math.sqrt(
-      baseline.ax ** 2 + baseline.ay ** 2 + baseline.az ** 2,
+      currentBaseline.ax ** 2 +
+        currentBaseline.ay ** 2 +
+        currentBaseline.az ** 2,
     );
     if (normCurr === 0 || normBase === 0) return null;
     const cosTheta = Math.max(-1.0, Math.min(1.0, dot / (normCurr * normBase)));
     return (Math.acos(cosTheta) * 180) / Math.PI;
-  }, [latestObs, baseline]);
-
-  const setBaselinePosture = () => {
-    if (
-      !latestObs ||
-      (latestObs.ax_mg === 0 && latestObs.ay_mg === 0 && latestObs.az_mg === 0)
-    ) {
-      alert(
-        "有効な加速度データを受信していません。seq=0の全軸ゼロは基準にできません。",
-      );
-      return;
-    }
-    const setAt = new Date().toLocaleTimeString("ja-JP");
-    const newBase = {
-      ax: latestObs.ax_mg,
-      ay: latestObs.ay_mg,
-      az: latestObs.az_mg,
-      setAt,
-    };
-    setBaseline(newBase);
-    dismissAlarm();
-
-    void fetch("/api/test-baseline", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ node_id: selectedNodeId, ...newBase }),
-    }).catch(() => {});
-  };
-
+  }, [latestObs, currentBaseline]);
   // GPS設置登録用ステート
   const [regNodeId, setRegNodeId] = useState("T1");
   const [regName, setRegName] = useState("タニ装着ノード（木ノードT1）");
@@ -207,27 +203,72 @@ export function MobileHome({
   const dismissAlarm = useCallback(() => {
     setIsAlertActive(false);
     setAlertReason("");
+    setAlarmDismissed(true);
     stopAlarmSound();
   }, [stopAlarmSound]);
 
-  // 基準姿勢からの傾斜変位（15°以上）を検知して自動警報
+  const setBaselinePosture = useCallback(() => {
+    if (
+      !latestObs ||
+      (latestObs.ax_mg === 0 && latestObs.ay_mg === 0 && latestObs.az_mg === 0)
+    ) {
+      alert(
+        "有効な加速度データを受信していません。seq=0の全軸ゼロは基準にできません。",
+      );
+      return;
+    }
+    const setAt = new Date().toLocaleTimeString("ja-JP");
+    const newBase = {
+      ax: latestObs.ax_mg,
+      ay: latestObs.ay_mg,
+      az: latestObs.az_mg,
+      setAt,
+    };
+    setBaselines((prev) => ({ ...prev, [selectedNodeId]: newBase }));
+    setIsAlertActive(false);
+    setAlertReason("");
+    setAlarmDismissed(false);
+    stopAlarmSound();
+
+    void fetch("/api/test-baseline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ node_id: selectedNodeId, ...newBase }),
+    }).catch(() => {});
+  }, [latestObs, selectedNodeId, stopAlarmSound]);
+
+  // 基準姿勢が確定しているときのみ、相対角度15°以上を検知して自動警報
   useEffect(() => {
-    if (relativeTiltDeg === null) return;
-    if (relativeTiltDeg >= 15.0 && !isAlertActive) {
+    if (!currentBaseline || relativeTiltDeg === null) return;
+    if (relativeTiltDeg < 15.0) {
+      if (alarmDismissed) {
+        const resetTimer = setTimeout(() => {
+          setAlarmDismissed(false);
+        }, 0);
+        return () => clearTimeout(resetTimer);
+      }
+      return;
+    }
+    if (relativeTiltDeg >= 15.0 && !isAlertActive && !alarmDismissed) {
       const timer = setTimeout(() => {
         triggerAlarm(
-          `姿勢変位 +${relativeTiltDeg.toFixed(1)}° を検知しました（${baseline ? "確定した基準姿勢" : "初期姿勢"}から大きく変動）`,
+          `姿勢変位 +${relativeTiltDeg.toFixed(1)}° を検知しました（確定した基準姿勢から大きく変動）`,
         );
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [relativeTiltDeg, isAlertActive, triggerAlarm, baseline]);
+  }, [
+    relativeTiltDeg,
+    isAlertActive,
+    alarmDismissed,
+    triggerAlarm,
+    currentBaseline,
+  ]);
   useEffect(() => {
     return () => {
       stopAlarmSound();
     };
   }, [stopAlarmSound]);
-
   // GPSおよび端末時計の取得（センサー時計不在の補完）
   const captureGpsLocation = () => {
     if (!navigator.geolocation) {
@@ -263,7 +304,7 @@ export function MobileHome({
     setCapturedTime(new Date().toLocaleString("ja-JP"));
   };
 
-  // 設置登録の送信
+  // 設置登録の送信（既存ノード重複409時はPATCH更新へフォールバック、通信断時はlocalStorage保存）
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!capturedLat || !capturedLon) {
@@ -271,33 +312,100 @@ export function MobileHome({
       return;
     }
 
+    const latNum = parseFloat(capturedLat);
+    const lonNum = parseFloat(capturedLon);
+    const payload = {
+      sensor_code: regNodeId,
+      name: regName,
+      latitude: latNum,
+      longitude: lonNum,
+    };
+
+    const savePendingToLocalStorage = () => {
+      try {
+        const key = "sanmou_pending_registrations";
+        const raw = window.localStorage.getItem(key);
+        const list = raw ? (JSON.parse(raw) as unknown[]) : [];
+        list.push({ ...payload, capturedAt: capturedTime });
+        window.localStorage.setItem(key, JSON.stringify(list));
+      } catch {
+        // localStorage unavailable
+      }
+    };
+
     try {
       const response = await fetch("/api/test-sensors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sensor_code: regNodeId,
-          name: regName,
-          latitude: parseFloat(capturedLat),
-          longitude: parseFloat(capturedLon),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         setRegSuccessMessage(
           `✓ 機体 ${regNodeId} を現在地（${capturedLat}, ${capturedLon}）で登録しました！`,
         );
-      } else {
-        setRegSuccessMessage(
-          `✓ 機体 ${regNodeId} の登録データをローカルに保存しました（帰社後同期）`,
-        );
+        return;
       }
+
+      if (response.status === 409) {
+        // 既に登録済みのsensor_codeの場合は一覧から検索してPATCHで座標と名称を更新する
+        const listRes = await fetch("/api/test-sensors?limit=200", {
+          cache: "no-store",
+        });
+        if (listRes.ok) {
+          const listData = (await listRes.json()) as {
+            items?: Array<{ id: string; sensor_code: string }>;
+          };
+          const existing = listData.items?.find(
+            (item) => item.sensor_code === regNodeId,
+          );
+          if (existing) {
+            const patchRes = await fetch(
+              `/api/test-sensors/${encodeURIComponent(existing.id)}`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: regName,
+                  latitude: latNum,
+                  longitude: lonNum,
+                }),
+              },
+            );
+            if (patchRes.ok) {
+              setRegSuccessMessage(
+                `✓ 機体 ${regNodeId} の設置位置を現在地（${capturedLat}, ${capturedLon}）に更新しました！`,
+              );
+              return;
+            }
+          }
+        }
+      }
+
+      savePendingToLocalStorage();
+      setRegSuccessMessage(
+        `✓ 機体 ${regNodeId} の登録データをローカルに保存しました（帰社後同期）`,
+      );
     } catch {
+      savePendingToLocalStorage();
       setRegSuccessMessage(
         `✓ 機体 ${regNodeId} の登録データを端末内に保存しました（完全圏外モード）`,
       );
     }
   };
+
+  const connectionBadgeLabel = useMemo(() => {
+    if (dataMode !== "test") {
+      return "🟢 デモ接続中";
+    }
+    if (testObsError) {
+      return "🔴 通信オフライン";
+    }
+    if (latestObs) {
+      return "🟢 実機受信中";
+    }
+    return "🟡 受信待機中";
+  }, [dataMode, testObsError, latestObs]);
 
   return (
     <div
@@ -316,7 +424,7 @@ export function MobileHome({
             </span>
           </div>
         </div>
-        <span className={styles.badgeOnline}>🟢 接続中</span>
+        <span className={styles.badgeOnline}>{connectionBadgeLabel}</span>
       </header>
 
       {/* ナビゲーションタブ（手袋対応・大径） */}
@@ -367,14 +475,14 @@ export function MobileHome({
                   onClick={setBaselinePosture}
                   type="button"
                 >
-                  🎯 今の角度を基準に設定して警報停止
+                  🎯 現在の姿勢を0°基準に再設定して警報解除
                 </button>
                 <button
                   className={styles.dismissAlarmBtn}
                   onClick={dismissAlarm}
                   type="button"
                 >
-                  警報を確認して停止
+                  🔕 警報音を停止して確認
                 </button>
               </div>
             ) : (
@@ -416,7 +524,7 @@ export function MobileHome({
                           latestObs.az_mg === 0
                           ? "初期化中 (全軸0)"
                           : relativeTiltDeg !== null
-                            ? `+${relativeTiltDeg.toFixed(1)}° (${baseline ? "基準差" : "仮算出"})`
+                            ? `+${relativeTiltDeg.toFixed(1)}° (${currentBaseline ? "基準差" : "基準未設定・仮算出"})`
                             : "計算不可"
                         : "待機中"}
                     </strong>
@@ -446,11 +554,14 @@ export function MobileHome({
                 </div>
 
                 <div className={styles.baselineBox}>
-                  {baseline ? (
+                  {currentBaseline ? (
                     <div className={styles.baselineStatus}>
-                      <span>🎯 基準姿勢確定済み ({baseline.setAt}):</span>
+                      <span>
+                        🎯 基準姿勢確定済み ({currentBaseline.setAt}):
+                      </span>
                       <code>
-                        ax={baseline.ax}, ay={baseline.ay}, az={baseline.az} mg
+                        ax={currentBaseline.ax}, ay={currentBaseline.ay}, az=
+                        {currentBaseline.az} mg
                       </code>
                       <button
                         type="button"
@@ -466,7 +577,8 @@ export function MobileHome({
                       className={styles.setBaselineBtn}
                       onClick={setBaselinePosture}
                     >
-                      🎯 タニ直立時の姿勢を「基準姿勢」に確定
+                      🎯 タニ直立時の姿勢を「基準姿勢」に確定（現在:
+                      基準未設定）
                     </button>
                   )}
                 </div>

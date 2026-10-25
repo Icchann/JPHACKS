@@ -62,7 +62,7 @@ function calculateReedSolomon(data: number[], ecCount: number): number[] {
 }
 
 // 29x29マトリクス（Version 3）の生成
-function generateQrMatrix(text: string): boolean[][] {
+export function generateQrMatrix(text: string): boolean[][] {
   const size = 29;
   const matrix: boolean[][] = Array.from({ length: size }, () =>
     new Array(size).fill(false),
@@ -120,7 +120,7 @@ function generateQrMatrix(text: string): boolean[][] {
     matrix[i]![6] = i % 2 === 0;
   }
 
-  // 暗数（Dark Module）
+  // 暗数（Dark Module: (4 * V + 9, 8) = (21, 8)）
   isFunction[size - 8]![8] = true;
   matrix[size - 8]![8] = true;
 
@@ -199,8 +199,8 @@ function generateQrMatrix(text: string): boolean[][] {
       matrix[14 - i]![8] = bit;
     }
 
-    // 複製（右上と左下）
-    if (i < 8) {
+    // 複製（左下7ビット: (28,8)〜(22,8)、右上8ビット: (8,21)〜(8,28)）
+    if (i < 7) {
       isFunction[size - 1 - i]![8] = true;
       matrix[size - 1 - i]![8] = bit;
     } else {
@@ -211,10 +211,10 @@ function generateQrMatrix(text: string): boolean[][] {
 
   // 6. データモジュールの配置（ジグザグ走査）＋ Mask 0
   let bitIndex = 0;
+  let upward = true;
   for (let right = size - 1; right > 0; right -= 2) {
     if (right === 6) right--; // タイミングパターンの列をスキップ
     const colList = [right, right - 1];
-    const upward = ((right + 1) / 2) % 2 === 1;
 
     for (let r = 0; r < size; r++) {
       const row = upward ? size - 1 - r : r;
@@ -228,6 +228,7 @@ function generateQrMatrix(text: string): boolean[][] {
         }
       }
     }
+    upward = !upward;
   }
 
   return matrix;

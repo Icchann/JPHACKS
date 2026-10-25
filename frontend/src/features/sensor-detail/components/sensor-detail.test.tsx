@@ -144,4 +144,34 @@ describe("SensorDetail", () => {
       screen.getByRole("link", { name: "センサー管理へ戻る" }),
     ).toHaveAttribute("href", "/sensors");
   });
+
+  it("実機センサーで未判定状態（unknown）を故障や通信断と誤表示しない", () => {
+    render(
+      <SensorDetail
+        returnPath="/sensors"
+        sensor={{
+          id: "test-sensor-1",
+          sensorCode: "T1",
+          name: "テスト北沢",
+          latitude: 35.001,
+          longitude: 137.002,
+          observationSeverity: "unknown",
+          communicationStatus: "unknown",
+          deviceFaultStatus: "unknown",
+          lowBattery: null,
+          soilMoistureValue: null,
+          tiltValue: null,
+          batteryPercent: null,
+          lastReceivedAt: null,
+          source: "device_test",
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("未判定")).toHaveLength(2);
+    expect(screen.getByText("未接続")).toBeInTheDocument();
+    expect(screen.queryByText("故障")).not.toBeInTheDocument();
+    expect(screen.queryByText("通信断")).not.toBeInTheDocument();
+    expect(screen.getByText("実機テスト")).toBeInTheDocument();
+  });
 });

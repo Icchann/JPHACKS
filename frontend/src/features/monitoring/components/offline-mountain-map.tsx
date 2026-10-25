@@ -538,12 +538,13 @@ export function OfflineMountainMap({
               const isDanger = sensor.observationSeverity === "danger";
               const isCaution = sensor.observationSeverity === "caution";
               const isTree = sensor.nodeType === "tree";
+              const isOffline = sensor.communicationStatus === "offline";
               const sensorOpacity = getLayerOpacity("sensor");
 
               return (
                 <g
                   key={sensor.id}
-                  className={`${styles.sensorMarkerGroup} ${isSelected ? styles.selectedMarker : ""}`}
+                  className={`${styles.sensorMarkerGroup} ${isSelected ? styles.selectedMarker : ""} ${isOffline ? styles.offlineMarker : ""}`.trim()}
                   opacity={sensorOpacity}
                   onClick={() => onSelectSensor(sensor)}
                   onMouseEnter={() => {
@@ -577,6 +578,21 @@ export function OfflineMountainMap({
                   >
                     {isTree ? "🌲" : "⛰️"}
                   </text>
+
+                  {/* 通信断（offline）インジケーターバッジ */}
+                  {isOffline && (
+                    <g transform="translate(13, -13)">
+                      <circle className={styles.offlineBadgeBg} r="6.5" />
+                      <text
+                        className={styles.offlineBadgeText}
+                        dominantBaseline="central"
+                        textAnchor="middle"
+                        y="0.5"
+                      >
+                        !
+                      </text>
+                    </g>
+                  )}
 
                   {/* センサーコード銘板（名札） */}
                   <rect
@@ -621,9 +637,13 @@ export function OfflineMountainMap({
                         y="0"
                       >
                         {isDanger ? "⚠️ " : "注意: "}
-                        {sensor.soilMoistureValue !== null
-                          ? `${(sensor.soilMoistureValue * 100).toFixed(0)}%`
-                          : `${(sensor.tiltValue ?? 0).toFixed(1)}°`}
+                        {sensor.tiltValue !== null &&
+                        (sensor.tiltValue >= 5.0 ||
+                          sensor.soilMoistureValue === null)
+                          ? `+${sensor.tiltValue.toFixed(1)}°`
+                          : sensor.soilMoistureValue !== null
+                            ? `${(sensor.soilMoistureValue * 100).toFixed(0)}%`
+                            : `${(sensor.tiltValue ?? 0).toFixed(1)}°`}
                       </text>
                     </g>
                   )}
@@ -693,8 +713,8 @@ export function OfflineMountainMap({
             aria-label="センサー簡易情報"
             className={styles.hoverTooltip}
             style={{
-              left: `calc(${(hoverPosition.x / SVG_WIDTH) * 100}% + ${panOffset.x}px)`,
-              top: `calc(${(hoverPosition.y / SVG_HEIGHT) * 100}% + ${panOffset.y}px)`,
+              left: `calc(${50 + ((hoverPosition.x - SVG_WIDTH / 2) / SVG_WIDTH) * 100 * zoomLevel}% + ${panOffset.x}px)`,
+              top: `calc(${50 + ((hoverPosition.y - SVG_HEIGHT / 2) / SVG_HEIGHT) * 100 * zoomLevel}% + ${panOffset.y}px)`,
             }}
           >
             <header className={styles.tooltipHeader}>

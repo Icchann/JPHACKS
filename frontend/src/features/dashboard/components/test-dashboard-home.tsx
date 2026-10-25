@@ -11,17 +11,38 @@ import dashboardStyles from "./dashboard-home.module.css";
 import styles from "./test-dashboard-home.module.css";
 import { TestTelemetryChart } from "./test-telemetry-chart";
 
+function normalizeOptionalMetric(
+  value: number | null | undefined,
+): number | null {
+  if (
+    value === null ||
+    value === undefined ||
+    value === -1 ||
+    !Number.isFinite(value)
+  ) {
+    return null;
+  }
+  return value;
+}
+
 function formatValue(value: number | null, unit: string): string {
-  return value === null ? "未計測" : `${value.toLocaleString("ja-JP")} ${unit}`;
+  return value === null || !Number.isFinite(value)
+    ? "未計測"
+    : `${value.toLocaleString("ja-JP")} ${unit}`;
 }
 
 export function TestDashboardHome() {
   const { data, error, isLoading, refresh } = useTestObservations();
   const [selectedNodeId, setSelectedNodeId] = useState("");
-
   const nodeIds = useMemo(
-    () => [...new Set(data?.items.map(({ node_id }) => node_id) ?? [])].sort(),
-    [data?.items],
+    () =>
+      [
+        ...new Set([
+          ...(selectedNodeId ? [selectedNodeId] : []),
+          ...(data?.items.map(({ node_id }) => node_id) ?? []),
+        ]),
+      ].sort(),
+    [data?.items, selectedNodeId],
   );
   const activeNodeId = nodeIds.includes(selectedNodeId)
     ? selectedNodeId
@@ -32,7 +53,6 @@ export function TestDashboardHome() {
   );
   const latestObservation = selectedObservations.at(-1) ?? null;
   const recentObservations = selectedObservations.slice(-10).reverse();
-
   return (
     <main className={dashboardStyles.appShell}>
       <AppSidebar
@@ -171,13 +191,19 @@ export function TestDashboardHome() {
               <article>
                 <span>土壌水分 生値</span>
                 <strong>
-                  {formatValue(latestObservation?.soil_raw ?? null, "raw")}
+                  {formatValue(
+                    normalizeOptionalMetric(latestObservation?.soil_raw),
+                    "raw",
+                  )}
                 </strong>
               </article>
               <article>
                 <span>電池電圧</span>
                 <strong>
-                  {formatValue(latestObservation?.battery_mv ?? null, "mV")}
+                  {formatValue(
+                    normalizeOptionalMetric(latestObservation?.battery_mv),
+                    "mV",
+                  )}
                 </strong>
               </article>
             </div>
@@ -204,18 +230,33 @@ export function TestDashboardHome() {
               <article className={styles.chartCard}>
                 <header>
                   <div>
-                    <p>SOIL / BATTERY</p>
-                    <h3>土壌生値・電池電圧</h3>
+                    <p>SOIL MOISTURE</p>
+                    <h3>土壌水分 生値</h3>
                   </div>
-                  <span>未計測値は非表示</span>
+                  <span>raw（未計測値は非表示）</span>
                 </header>
                 <TestTelemetryChart
                   observations={selectedObservations}
                   series={[
                     { key: "soil_raw", label: "土壌生値", color: "#247a58" },
+                  ]}
+                  title="土壌水分 生値"
+                />
+              </article>
+              <article className={styles.chartCard}>
+                <header>
+                  <div>
+                    <p>BATTERY VOLTAGE</p>
+                    <h3>電池電圧</h3>
+                  </div>
+                  <span>mV（未計測値は非表示）</span>
+                </header>
+                <TestTelemetryChart
+                  observations={selectedObservations}
+                  series={[
                     { key: "battery_mv", label: "電池mV", color: "#2c6cbf" },
                   ]}
-                  title="土壌生値・電池電圧"
+                  title="電池電圧"
                 />
               </article>
             </div>
@@ -247,16 +288,22 @@ export function TestDashboardHome() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentObservations.map((observation) => (
-                    <tr key={`${observation.received_at}-${observation.seq}`}>
+                  {recentObservations.map((observation, index) => (
+                    <tr
+                      key={`${observation.received_at}-${observation.node_id}-${observation.seq}-${observation.sample_ms}-${index}`}
+                    >
                       <td>{formatJapanDateTime(observation.received_at)}</td>
                       <td>{observation.seq}</td>
                       <td>{observation.sample_ms}</td>
                       <td>{observation.ax_mg}</td>
                       <td>{observation.ay_mg}</td>
                       <td>{observation.az_mg}</td>
-                      <td>{observation.soil_raw ?? "—"}</td>
-                      <td>{observation.battery_mv ?? "—"}</td>
+                      <td>
+                        {normalizeOptionalMetric(observation.soil_raw) ?? "—"}
+                      </td>
+                      <td>
+                        {normalizeOptionalMetric(observation.battery_mv) ?? "—"}
+                      </td>
                     </tr>
                   ))}
                   {recentObservations.length === 0 ? (

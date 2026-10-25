@@ -165,6 +165,53 @@ def test_clear_test_observations(tmp_path: Path) -> None:
     del_res = client.delete("/test/observations", headers={"X-Test-Token": TEST_TOKEN})
     assert del_res.status_code == 204
 
-    # 削除後（アイテムが空であること）
+    # 削除後（ファイルは存在し、アイテムが空であること）
     res_after = client.get("/test/observations", headers={"X-Test-Token": TEST_TOKEN})
-    assert len(res_after.json()["items"]) == 0
+    assert res_after.status_code == 200
+    assert res_after.json()["file_exists"] is True
+    assert res_after.json()["items"] == []
+
+
+def test_empty_zero_byte_csv_returns_empty_items(tmp_path: Path) -> None:
+    csv_path = tmp_path / "observations.csv"
+    csv_path.write_bytes(b"")
+    _use_settings(environment="test", csv_path=csv_path)
+
+    response = client.get("/test/observations", headers={"X-Test-Token": TEST_TOKEN})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["file_exists"] is True
+    assert body["items"] == []
+    assert body["invalid_row_count"] == 0
+
+
+def test_utf8_bom_csv_is_accepted(tmp_path: Path) -> None:
+    csv_path = tmp_path / "observations.csv"
+    with csv_path.open("w", encoding="utf-8-sig", newline="") as csv_file:
+        writer = csv.writer(csv_file, lineterminator="\r\n")
+        writer.writerow(CSV_COLUMNS)
+        writer.writerow(
+            [
+                "2026-09-30T18:30:11.171+09:00",
+                "T1",
+                1,
+                0,
+                3115,
+                -128,
+                -176,
+                928,
+                -1,
+                -1,
+                "S0,T1,1,0,3115,-128,-176,928,-1,-1",
+            ]
+        )
+    _use_settings(environment="test", csv_path=csv_path)
+
+    response = client.get("/test/observations", headers={"X-Test-Token": TEST_TOKEN})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["file_exists"] is True
+    assert len(body["items"]) == 1
+    assert body["items"][0]["node_id"] == "T1"

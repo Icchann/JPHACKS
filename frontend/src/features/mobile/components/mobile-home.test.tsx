@@ -49,7 +49,7 @@ describe("MobileHome", () => {
 
     // Dismiss alarm
     const dismissBtn = screen.getByRole("button", {
-      name: "警報を確認して停止",
+      name: /警報音を停止して確認/,
     });
     fireEvent.click(dismissBtn);
 
@@ -79,7 +79,7 @@ describe("MobileHome", () => {
     render(<MobileHome dataMode="test" initialNodeId="T1" />);
 
     const baselineBtn = screen.getByRole("button", {
-      name: "🎯 タニ直立時の姿勢を「基準姿勢」に確定",
+      name: /タニ直立時の姿勢を「基準姿勢」に確定/,
     });
     fireEvent.click(baselineBtn);
 

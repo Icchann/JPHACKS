@@ -222,10 +222,20 @@ def main() -> int:
             webbrowser.open(dashboard_url)
         except (OSError, webbrowser.Error):
             pass
+        reported_stopped: set[str] = set()
         while True:
             for process, (name, _) in zip(processes, commands, strict=True):
+                if name in reported_stopped:
+                    continue
                 exit_code = process.poll()
                 if exit_code is not None:
+                    if name == "USBシリアル受信":
+                        reported_stopped.add(name)
+                        print(
+                            f"[警告] {name} が終了しました（終了コード: {exit_code}）。"
+                            "既存CSVおよび管理API・画面サーバーの稼働は継続します。"
+                        )
+                        continue
                     print(f"{name} が終了しました（終了コード: {exit_code}）")
                     return exit_code or 1
             time.sleep(0.5)

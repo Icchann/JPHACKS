@@ -24,9 +24,9 @@ import {
   formatJapanDateTime,
   OBSERVATION_LABELS,
 } from "../../monitoring/monitoring-utils";
+import type { TestObservationResponse } from "../../dashboard/test-observation-types";
 import type { DemoSensor, ObservationSeverity } from "../../monitoring/types";
 import type { TestSensor, TestSensorListResponse } from "../sensor-api-types";
-
 import styles from "./sensor-management.module.css";
 
 type ManagedSeverity = ObservationSeverity | "unknown";
@@ -87,9 +87,10 @@ const EMPTY_FORM: SensorFormValues = {
   longitude: "",
 };
 
-function toManagedSensor(sensor: DemoSensor): ManagedSensor {
-  return { ...sensor };
-}
+const ONLINE_THRESHOLD_MS = 60_000;
+const BATTERY_MIN_MV = 2800;
+const BATTERY_SPAN_MV = 800;
+const SENSOR_PAGE_LIMIT = 200;
 
 function fromTestSensor(sensor: TestSensor): ManagedSensor {
   return {
@@ -162,7 +163,7 @@ export function SensorManagement({
   dataMode?: SensorDataMode;
 }) {
   const [sensors, setSensors] = useState<ManagedSensor[]>(() =>
-    dataMode === "demo" ? DEMO_SENSORS.map(toManagedSensor) : [],
+    dataMode === "demo" ? DEMO_SENSORS.map((sensor) => ({ ...sensor })) : [],
   );
   const [query, setQuery] = useState("");
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -187,15 +188,79 @@ export function SensorManagement({
       setIsLoading(true);
       setApiError(null);
       try {
-        const response = await fetch("/api/test-sensors?limit=200", {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("センサー一覧を取得できませんでした");
+        const allItems: TestSensor[] = [];
+        let cursor: string | null = null;
+        do {
+          const query = cursor
+            ? `?limit=${SENSOR_PAGE_LIMIT}&cursor=${encodeURIComponent(cursor)}`
+            : `?limit=${SENSOR_PAGE_LIMIT}`;
+          const response = await fetch(`/api/test-sensors${query}`, {
+            cache: "no-store",
+          });
+          if (!response.ok) {
+            throw new Error("センサー一覧を取得できませんでした");
+          }
+          const body = (await response.json()) as TestSensorListResponse;
+          allItems.push(...body.items);
+          cursor = body.next_cursor;
+        } while (cursor);
+
+        let managedList = allItems.map(fromTestSensor);
+
+        try {
+          const obsResponse = await fetch("/api/test-observations", {
+            cache: "no-store",
+          });
+          if (obsResponse.ok) {
+            const obsBody =
+              (await obsResponse.json()) as TestObservationResponse;
+            const latestByNode: Record<
+              string,
+              TestObservationResponse["items"][number]
+            > = {};
+            for (const item of obsBody.items ?? []) {
+              latestByNode[item.node_id] = item;
+            }
+            const refreshedEpoch = Date.parse(obsBody.refreshed_at);
+            managedList = managedList.map((sensor) => {
+              const latest = latestByNode[sensor.sensorCode];
+              if (!latest) {
+                return sensor;
+              }
+              const receivedEpoch = Date.parse(latest.received_at);
+              const isFresh =
+                Number.isFinite(receivedEpoch) &&
+                Number.isFinite(refreshedEpoch) &&
+                refreshedEpoch - receivedEpoch < ONLINE_THRESHOLD_MS;
+              const batteryPercent =
+                latest.battery_mv === null || latest.battery_mv === -1
+                  ? null
+                  : Math.min(
+                      Math.max(
+                        Math.round(
+                          ((latest.battery_mv - BATTERY_MIN_MV) /
+                            BATTERY_SPAN_MV) *
+                            100,
+                        ),
+                        0,
+                      ),
+                      100,
+                    );
+              return {
+                ...sensor,
+                communicationStatus: isFresh ? "online" : "offline",
+                lastReceivedAt: latest.received_at,
+                batteryPercent,
+                observationSeverity: "normal",
+              };
+            });
+          }
+        } catch {
+          // 観測CSVが未作成・取得不能でも台帳一覧の読み込み自体は継続します。
         }
-        const body = (await response.json()) as TestSensorListResponse;
+
         if (!cancelled) {
-          setSensors(body.items.map(fromTestSensor));
+          setSensors(managedList);
         }
       } catch {
         if (!cancelled) {
@@ -245,7 +310,7 @@ export function SensorManagement({
     if (!ok) return;
     if (dataMode === "demo") {
       setSensors((current) => current.filter((item) => item.id !== sensor.id));
-      setStatusMessage(`✓ センサー「${sensor.sensorCode}」を削除しました`);
+      setStatusMessage(`センサー「${sensor.sensorCode}」を削除しました`);
     } else {
       try {
         const response = await fetch(
@@ -257,7 +322,7 @@ export function SensorManagement({
             current.filter((item) => item.id !== sensor.id),
           );
           setStatusMessage(
-            `✓ センサー「${sensor.sensorCode}」を台帳から削除しました。同じIDで再登録できます。`,
+            `センサー「${sensor.sensorCode}」を台帳から削除しました。同じIDで再登録できます。`,
           );
         } else {
           setApiError("センサーの削除に失敗しました");
@@ -274,12 +339,32 @@ export function SensorManagement({
     );
     if (!ok) return;
 
+    if (dataMode === "demo") {
+      setStatusMessage("デモモードのため観測履歴は変更されません。");
+      return;
+    }
+
     try {
       const response = await fetch("/api/test-observations", {
         method: "DELETE",
       });
       if (response.ok || response.status === 204) {
-        setStatusMessage("✓ 古い観測履歴をクリアしました。");
+        try {
+          await fetch("/api/test-baseline", { method: "DELETE" });
+        } catch {
+          // 基準姿勢リセットの通信失敗時も観測履歴クリア完了を通知します。
+        }
+        setSensors((current) =>
+          current.map((sensor) => ({
+            ...sensor,
+            observationSeverity: "unknown",
+            communicationStatus: "unknown",
+            batteryPercent: null,
+            lastReceivedAt: null,
+          })),
+        );
+        setApiError(null);
+        setStatusMessage("古い観測履歴をクリアしました。");
       } else {
         setApiError("観測履歴のクリアに失敗しました");
       }
@@ -523,9 +608,19 @@ export function SensorManagement({
           </section>
 
           {apiError ? (
-            <div className={styles.statusMessage} role="alert">
+            <div
+              className={`${styles.statusMessage} ${styles.errorMessage}`}
+              role="alert"
+            >
               <span aria-hidden="true">!</span>
               {apiError}
+              <button
+                aria-label="エラーメッセージを閉じる"
+                type="button"
+                onClick={() => setApiError(null)}
+              >
+                ×
+              </button>
             </div>
           ) : null}
 
@@ -679,8 +774,9 @@ export function SensorManagement({
                     </dl>
 
                     <footer className={styles.cardActions}>
-                      {/* 画面内だけで追加した未観測センサーは詳細URLを持たせません。 */}
-                      {sensor.observationSeverity === "unknown" ? (
+                      {/* 画面内だけで追加したデモ未観測センサーは詳細URLを持たせず、test環境では未受信でも詳細へ遷移可能にします。 */}
+                      {dataMode !== "test" &&
+                      sensor.observationSeverity === "unknown" ? (
                         <Button
                           aria-label={`${sensor.sensorCode}の状態は未取得`}
                           disabled
@@ -862,8 +958,27 @@ export function SensorManagement({
                 />
               </label>
 
+              {apiError ? (
+                <div
+                  className={`${styles.statusMessage} ${styles.errorMessage}`}
+                  role="alert"
+                >
+                  <span aria-hidden="true">!</span>
+                  {apiError}
+                  <button
+                    aria-label="エラーメッセージを閉じる"
+                    type="button"
+                    onClick={() => setApiError(null)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
+
               <p className={styles.formNote}>
-                登録・編集内容はデモ表示だけに反映され、APIやDBには保存されません。
+                {dataMode === "test"
+                  ? "登録・編集内容は検証用DBへ保存されます。"
+                  : "登録・編集内容はデモ表示だけに反映され、APIやDBには保存されません。"}
               </p>
 
               <footer>

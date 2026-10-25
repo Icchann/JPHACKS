@@ -147,3 +147,40 @@ def test_delete_sensor_and_allow_re_registration(sensor_client: tuple[TestClient
     re_create_res = client.post("/sensors", json=payload, headers=_headers())
     assert re_create_res.status_code == 201
     assert re_create_res.json()["sensor_code"] == "T1-DEL"
+
+
+@pytest.mark.parametrize(
+    "invalid_code",
+    [
+        "T1 01",
+        "T1@01",
+        "センサー1",
+        "A" * 65,
+        "   ",
+    ],
+)
+def test_rejects_invalid_sensor_code_format(
+    sensor_client: tuple[TestClient, str],
+    invalid_code: str,
+) -> None:
+    client, _database_url = sensor_client
+
+    response = client.post("/sensors", json=_payload(sensor_code=invalid_code), headers=_headers())
+
+    assert response.status_code == 422
+
+
+def test_search_sensors_escapes_underscore_and_percent_wildcards(
+    sensor_client: tuple[TestClient, str],
+) -> None:
+    client, _database_url = sensor_client
+    assert client.post("/sensors", json=_payload("NODE_1"), headers=_headers()).status_code == 201
+    assert client.post("/sensors", json=_payload("NODEA1"), headers=_headers()).status_code == 201
+
+    res_underscore = client.get("/sensors", params={"q": "NODE_1"}, headers=_headers())
+    assert res_underscore.status_code == 200
+    assert [item["sensor_code"] for item in res_underscore.json()["items"]] == ["NODE_1"]
+
+    res_percent = client.get("/sensors", params={"q": "100%"}, headers=_headers())
+    assert res_percent.status_code == 200
+    assert res_percent.json()["items"] == []

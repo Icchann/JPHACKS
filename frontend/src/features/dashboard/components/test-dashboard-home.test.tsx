@@ -58,6 +58,53 @@ describe("TestDashboardHome", () => {
     });
   });
 
+  it("土壌生値と電池電圧を別々のグラフで表示し、未計測センチネル値-1を除外する", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...RESPONSE,
+          items: [
+            {
+              received_at: "2026-09-30T18:30:10.000+09:00",
+              node_id: "T2",
+              seq: 1,
+              hop: 0,
+              sample_ms: 500,
+              ax_mg: 0,
+              ay_mg: 0,
+              az_mg: 1000,
+              soil_raw: 800,
+              battery_mv: 3300,
+            },
+            {
+              received_at: "2026-09-30T18:30:11.171+09:00",
+              node_id: "T1",
+              seq: 1,
+              hop: 0,
+              sample_ms: 1000,
+              ax_mg: 10,
+              ay_mg: 20,
+              az_mg: 980,
+              soil_raw: 1200,
+              battery_mv: -1,
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    render(<TestDashboardHome />);
+
+    expect(
+      await screen.findByRole("img", {
+        name: "土壌水分 生値の実証実験時系列グラフ",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1,200 raw")).toBeInTheDocument();
+    expect(screen.getByText("未計測")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "T2" })).toBeInTheDocument();
+  });
   it("CSVが未作成なら受信待ちを表示する", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

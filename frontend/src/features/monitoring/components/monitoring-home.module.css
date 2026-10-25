@@ -108,7 +108,7 @@
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 10050;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -117,18 +117,31 @@
   padding: 16px;
 }
 
+.modal {
+  width: 520px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+}
+
 .mountainModal {
   width: 520px;
   max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.28);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
-
 .modalHeader {
   display: flex;
   align-items: center;
@@ -468,6 +481,7 @@
 
 .mapSection {
   display: grid;
+  flex: 1;
   min-height: 0;
   grid-template-rows: minmax(0, 1fr) auto;
 }
@@ -1167,7 +1181,7 @@
 .pcEmergencyBanner {
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 10050;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1189,6 +1203,15 @@
   }
 }
 
+@keyframes pulseIcon {
+  0% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(1.2);
+  }
+}
+
 .pcEmergencyLeft {
   display: flex;
   align-items: center;
@@ -1199,7 +1222,6 @@
   font-size: 2rem;
   animation: pulseIcon 0.6s infinite alternate;
 }
-
 .pcEmergencyTitle {
   font-size: 1.15rem;
   font-weight: 800;

@@ -4,7 +4,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+DEFAULT_CSV_PATH = (BACKEND_ROOT / "data" / "observations.csv").resolve()
 
 # リポジトリ直下から実行した場合もバックエンドパッケージを解決できるようにします。
 sys.path.insert(0, str(BACKEND_ROOT))
@@ -30,7 +32,7 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("backend/data/observations.csv"),
+        default=DEFAULT_CSV_PATH,
         help="受信CSVの保存先",
     )
     args = parser.parse_args()

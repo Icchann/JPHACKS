@@ -33,7 +33,7 @@ def _snapshot(sensor: Sensor) -> dict[str, str | float | None]:
 
 
 def _response(sensor: Sensor) -> SensorResponse:
-    evaluation = sensor.evaluation_state
+    evaluation: SensorEvaluationState | None = sensor.evaluation_state
     return SensorResponse(
         id=sensor.id,
         sensor_code=sensor.sensor_code,
@@ -42,17 +42,17 @@ def _response(sensor: Sensor) -> SensorResponse:
         longitude=float(sensor.longitude),
         observation_severity=cast(
             Literal["normal", "caution", "danger", "unknown"],
-            evaluation.observation_severity,
+            evaluation.observation_severity if evaluation is not None else "unknown",
         ),
         communication_status=cast(
             Literal["online", "offline", "unknown"],
-            evaluation.communication_status,
+            evaluation.communication_status if evaluation is not None else "unknown",
         ),
         device_fault_status=cast(
             Literal["ok", "fault", "unknown"],
-            evaluation.device_fault_status,
+            evaluation.device_fault_status if evaluation is not None else "unknown",
         ),
-        low_battery=evaluation.low_battery,
+        low_battery=evaluation.low_battery if evaluation is not None else None,
         last_received_at=sensor.last_received_at,
     )
 
@@ -71,7 +71,11 @@ def _active_sensor_or_404(session: Session, sensor_id: str) -> Sensor:
 @router.get(
     "",
     response_model=SensorListResponse,
-    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    responses={
+        400: {"model": ErrorResponse},
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+    },
 )
 def list_sensors(
     q: str | None = Query(default=None, max_length=120),
@@ -87,9 +91,13 @@ def list_sensors(
         .where(Sensor.is_deleted.is_(False))
     )
     if q and q.strip():
-        pattern = f"%{q.strip().lower()}%"
+        escaped_q = q.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped_q}%"
         statement = statement.where(
-            or_(func.lower(Sensor.sensor_code).like(pattern), func.lower(Sensor.name).like(pattern))
+            or_(
+                func.lower(Sensor.sensor_code).like(pattern, escape="\\"),
+                func.lower(Sensor.name).like(pattern, escape="\\"),
+            )
         )
     if cursor:
         cursor_sensor = session.get(Sensor, cursor)

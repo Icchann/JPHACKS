@@ -17,6 +17,8 @@ export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
     return null;
   }
 
+  const hasExplicitCurrent = items.some((item) => Boolean(item.current));
+
   return (
     <nav
       aria-label="パンくずリスト"
@@ -24,7 +26,9 @@ export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
     >
       <ol className={styles.list}>
         {items.map((item, index) => {
-          const isLast = index === items.length - 1 || item.current;
+          const isCurrent = hasExplicitCurrent
+            ? Boolean(item.current)
+            : index === items.length - 1;
 
           return (
             <li className={styles.item} key={`${item.label}-${index}`}>
@@ -33,7 +37,7 @@ export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
                   <Icon name="chevron" className={styles.separatorIcon} />
                 </span>
               )}
-              {isLast ? (
+              {isCurrent ? (
                 <span aria-current="page" className={styles.current}>
                   {item.label}
                 </span>

@@ -219,15 +219,14 @@ describe("MonitoringHome", () => {
     expect(screen.getByText("+24.5°")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "🎯 今の角度を基準姿勢に設定（角度0°・警報停止）",
+        name: /現在の姿勢を0°基準に再設定/,
       }),
     ).toBeInTheDocument();
 
     const dismissBtn = screen.getByRole("button", {
-      name: "警報音を停止",
+      name: /警報を確認して解除/,
     });
     fireEvent.click(dismissBtn);
-
     expect(
       screen.queryByText(
         "【緊急警報】山林センサーの大きな姿勢変化を検知しました！",

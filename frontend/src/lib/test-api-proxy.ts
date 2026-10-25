@@ -24,8 +24,11 @@ export async function forwardTestApi(
   const backendUrl =
     process.env.BACKEND_INTERNAL_URL ?? "http://127.0.0.1:8000";
   const method = request?.method ?? "GET";
-  const body =
-    method === "GET" || method === "HEAD" ? undefined : await request?.text();
+  const rawBody =
+    method === "GET" || method === "HEAD" || method === "DELETE"
+      ? undefined
+      : await request?.text();
+  const body = rawBody ? rawBody : undefined;
 
   try {
     // 検証用管理トークンはNext.jsからFastAPIへだけ渡し、ブラウザーへ公開しません。
@@ -38,6 +41,14 @@ export async function forwardTestApi(
       },
       method,
     });
+    // 204/205/304 はボディを持てないため、テキスト化せず null ボディで返却します。
+    if (
+      response.status === 204 ||
+      response.status === 205 ||
+      response.status === 304
+    ) {
+      return new NextResponse(null, { status: response.status });
+    }
     return new NextResponse(await response.text(), {
       status: response.status,
       headers: {

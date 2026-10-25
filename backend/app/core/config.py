@@ -4,15 +4,19 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+ROOT_ENV_FILE = PROJECT_ROOT / ".env"
+DEFAULT_OBSERVATION_CSV_PATH = (PROJECT_ROOT / "backend" / "data" / "observations.csv").resolve()
+DEFAULT_DATABASE_PATH = (PROJECT_ROOT / "backend" / "data" / "sanmou-test.sqlite3").resolve()
+DEFAULT_DATABASE_URL = f"sqlite+pysqlite:///{DEFAULT_DATABASE_PATH.as_posix()}"
 
 
 class Settings(BaseSettings):
     app_name: str = "sanmou-api"
     app_environment: Literal["dev", "test"] = "dev"
     frontend_origin: str = "http://localhost:3000"
-    observation_csv_path: Path = Path("backend/data/observations.csv")
-    database_url: str = ""
+    observation_csv_path: Path = DEFAULT_OBSERVATION_CSV_PATH
+    database_url: str = DEFAULT_DATABASE_URL
     sanmou_test_api_token: str = ""
 
     model_config = SettingsConfigDict(

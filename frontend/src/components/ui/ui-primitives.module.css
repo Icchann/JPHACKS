@@ -36,8 +36,8 @@
   background: var(--surface);
 }
 
-.secondary:not(:disabled):hover,
-.ghost:not(:disabled):hover {
+.secondary:where(:not(:disabled)):hover,
+.ghost:where(:not(:disabled)):hover {
   border-color: var(--brand-700);
   color: var(--brand-800);
   background: var(--brand-50);

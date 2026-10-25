@@ -3,9 +3,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.device.protocol import NODE_ID_PATTERN
+
 
 class SensorCreate(BaseModel):
-    sensor_code: str = Field(min_length=1, max_length=80)
+    sensor_code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=120)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
@@ -18,6 +20,16 @@ class SensorCreate(BaseModel):
         if not normalized:
             raise ValueError("空白以外の文字を入力してください")
         return normalized
+
+    @field_validator("sensor_code")
+    @classmethod
+    def validate_sensor_code_format(cls, value: str) -> str:
+        # シリアル受信プロトコル（NODE_ID_PATTERN）と登録センサーIDの形式を一致させます。
+        if not NODE_ID_PATTERN.fullmatch(value):
+            raise ValueError(
+                "センサーIDは半角英数字・ハイフン・アンダースコア（1〜64文字）で入力してください"
+            )
+        return value
 
 
 class SensorUpdate(BaseModel):

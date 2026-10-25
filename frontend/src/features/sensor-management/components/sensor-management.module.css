@@ -142,6 +142,16 @@
   background: transparent;
 }
 
+.errorMessage {
+  border-color: color-mix(in srgb, var(--danger), transparent 60%);
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.errorMessage > span {
+  background: var(--danger);
+}
+
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(150px, 1fr));
@@ -168,6 +178,13 @@
 .sensorSectionHeader h2 {
   margin: 0;
   font-size: 1.03rem;
+}
+
+.headerControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .searchBox {
@@ -579,6 +596,14 @@
 
   .searchBox {
     width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .summaryGrid,
+  .sensorGrid,
+  .coordinateFields {
+    grid-template-columns: 1fr;
   }
 }
 

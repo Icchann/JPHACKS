@@ -14,7 +14,13 @@ import webbrowser
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
+DEFAULT_DATABASE_PATH = BACKEND_DIR / "data" / "sanmou-test.sqlite3"
+BACKEND_HOST = "127.0.0.1"
+BACKEND_PORT = 8000
+PROCESS_STOP_TIMEOUT_SECONDS = 5
+BROWSER_OPEN_DELAY_SECONDS = 2.5
 
 
 def get_npm_executable() -> str:
@@ -31,7 +37,9 @@ def get_npm_executable() -> str:
 def ensure_frontend_dependencies(npm_bin: str) -> None:
     node_modules = FRONTEND_DIR / "node_modules"
     if not node_modules.exists():
-        print("\n[1/3] 初回起動のため、画面用ライブラリをセットアップしています（約1〜2分）...")
+        print(
+            "\n[1/3] 初回起動のため、画面用ライブラリをセットアップしています（約1〜2分）..."
+        )
         try:
             subprocess.run(
                 [npm_bin, "install"],
@@ -46,6 +54,44 @@ def ensure_frontend_dependencies(npm_bin: str) -> None:
         print("\n✓ 画面ライブラリのセットアップを確認しました。")
 
 
+def get_backend_python() -> Path | None:
+    venv_dir = BACKEND_DIR / ".venv"
+    if not venv_dir.exists():
+        return None
+    venv_python = (
+        venv_dir / "Scripts" / "python.exe"
+        if os.name == "nt"
+        else venv_dir / "bin" / "python"
+    )
+    return venv_python if venv_python.exists() else None
+
+
+def build_backend_env() -> dict[str, str]:
+    env = os.environ.copy()
+    DEFAULT_DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    env.setdefault(
+        "DATABASE_URL",
+        f"sqlite+pysqlite:///{DEFAULT_DATABASE_PATH.resolve().as_posix()}",
+    )
+    current_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        f"{BACKEND_DIR}{os.pathsep}{current_pythonpath}"
+        if current_pythonpath
+        else str(BACKEND_DIR)
+    )
+    return env
+
+
+def stop_process(proc: subprocess.Popen[bytes] | None) -> None:
+    if proc is None or proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=PROCESS_STOP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
 def main() -> None:
     print("=" * 50)
     print("  🌲 山網（Sanmou）山林監視システム を起動しています")
@@ -53,6 +99,40 @@ def main() -> None:
 
     npm_bin = get_npm_executable()
     ensure_frontend_dependencies(npm_bin)
+
+    backend_process: subprocess.Popen[bytes] | None = None
+    backend_python = get_backend_python()
+    if backend_python is not None:
+        print("\n[バックエンド] DBマイグレーションとFastAPIサーバーを起動しています...")
+        backend_env = build_backend_env()
+        subprocess.run(
+            [
+                str(backend_python),
+                "-m",
+                "alembic",
+                "-c",
+                str(BACKEND_DIR / "alembic.ini"),
+                "upgrade",
+                "head",
+            ],
+            cwd=BACKEND_DIR,
+            env=backend_env,
+            check=True,
+        )
+        backend_process = subprocess.Popen(
+            [
+                str(backend_python),
+                "-m",
+                "uvicorn",
+                "app.main:app",
+                "--host",
+                BACKEND_HOST,
+                "--port",
+                str(BACKEND_PORT),
+            ],
+            cwd=BACKEND_DIR,
+            env=backend_env,
+        )
 
     print("\n[2/3] Webサーバーを起動しています...")
     # Next.js 開発サーバーを起動
@@ -66,10 +146,10 @@ def main() -> None:
     print("\n※ 終了するときは、この画面で [Ctrl + C] を押してください。\n")
 
     # サーバーが立ち上がるのを少し待ってからブラウザを開く
-    time.sleep(2.5)
+    time.sleep(BROWSER_OPEN_DELAY_SECONDS)
     try:
         webbrowser.open(url)
-    except Exception:
+    except (OSError, webbrowser.Error):
         # ブラウザ自動起動に失敗してもURLを明示しているので続行
         pass
 
@@ -77,11 +157,9 @@ def main() -> None:
         process.wait()
     except KeyboardInterrupt:
         print("\n\n山網システムを安全に停止しています...")
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
+    finally:
+        stop_process(process)
+        stop_process(backend_process)
         print("✓ システムを停止しました。お疲れ様でした。\n")
 
 

@@ -25,6 +25,7 @@ import {
 } from "../monitoring-utils";
 import type {
   CommunicationStatus,
+  DemoAlert,
   DemoSensor,
   LayerVisibility,
   MapLayerId,
@@ -55,7 +56,7 @@ export function MonitoringHome({
 }: MonitoringHomeProps = {}) {
   const router = useRouter();
   const { snapshot, newAlerts, dismissNewAlerts } = useDemoMonitoring();
-  const { data: testObservations } = useTestObservations();
+  const { data: testObservations } = useTestObservations(dataMode === "test");
   const isLiveTestMode = Boolean(
     testObservations?.items && testObservations.items.length > 0,
   );
@@ -142,9 +143,21 @@ export function MonitoringHome({
     sensorId: string;
     sensorName: string;
     sensorCode: string;
+    code: string;
     tiltDeg: number;
     reason: string;
   } | null>(null);
+  const [latchedEmergencyAlert, setLatchedEmergencyAlert] = useState<{
+    sensorId: string;
+    sensorName: string;
+    sensorCode: string;
+    code: string;
+    tiltDeg: number;
+    reason: string;
+  } | null>(null);
+  const [dismissedDangerCodes, setDismissedDangerCodes] = useState<
+    Record<string, boolean>
+  >({});
 
   const pcAudioContextRef = useRef<AudioContext | null>(null);
   const pcAlarmIntervalRef = useRef<number | null>(null);
@@ -222,8 +235,9 @@ export function MonitoringHome({
     customIp.trim() || (useBonjour ? bonjourHost : networkIp);
 
   const mobileUrl = useMemo(() => {
+    const querySuffix = dataMode === "test" ? "?mode=test" : "";
     if (typeof window === "undefined") {
-      return `http://${effectiveHost}:3000/mobile`;
+      return `http://${effectiveHost}:3000/mobile${querySuffix}`;
     }
     const hostname = window.location.hostname;
     const port = window.location.port ? `:${window.location.port}` : "";
@@ -231,9 +245,8 @@ export function MonitoringHome({
       hostname === "localhost" || hostname === "127.0.0.1"
         ? effectiveHost
         : hostname;
-    return `${window.location.protocol}//${targetHost}${port}/mobile`;
-  }, [effectiveHost]);
-
+    return `${window.location.protocol}//${targetHost}${port}/mobile${querySuffix}`;
+  }, [dataMode, effectiveHost]);
   const copyMobileUrl = () => {
     void navigator.clipboard.writeText(mobileUrl);
     setCopied(true);
@@ -300,6 +313,19 @@ export function MonitoringHome({
       };
 
       setBaselines((prev) => ({ ...prev, [nodeId]: newBaseline }));
+      setLatchedEmergencyAlert((prev) =>
+        prev?.sensorCode === nodeId ? null : prev,
+      );
+      setManualEmergencyAlert((prev) =>
+        prev?.sensorCode === nodeId ? null : prev,
+      );
+      setDismissedDangerCodes((prev) => {
+        if (!prev[nodeId]) return prev;
+        const next = { ...prev };
+        delete next[nodeId];
+        return next;
+      });
+      stopPcAlarm();
 
       try {
         await fetch("/api/test-baseline", {
@@ -311,7 +337,7 @@ export function MonitoringHome({
         // ignore sync error
       }
     },
-    [testObservations],
+    [stopPcAlarm, testObservations],
   );
 
   // SQLiteから登録済み山林工区（下絵画像URL・境界範囲）を取得
@@ -574,6 +600,64 @@ export function MonitoringHome({
     [activeSensors],
   );
 
+  const currentModalSensor = useMemo(
+    () =>
+      selectedModalSensor
+        ? (activeSensors.find((s) => s.id === selectedModalSensor.id) ??
+          selectedModalSensor)
+        : null,
+    [activeSensors, selectedModalSensor],
+  );
+
+  const effectiveRefreshedAt = useMemo(() => {
+    if (dataMode === "test") {
+      return testObservations?.refreshed_at ?? snapshot.refreshedAt;
+    }
+    return snapshot.refreshedAt;
+  }, [dataMode, snapshot.refreshedAt, testObservations?.refreshed_at]);
+
+  const activeAlerts = useMemo<DemoAlert[]>(() => {
+    if (dataMode !== "test") {
+      return snapshot.alerts;
+    }
+    const alerts: DemoAlert[] = [];
+    for (const sensor of activeSensors) {
+      const startedAt = sensor.lastReceivedAt ?? effectiveRefreshedAt;
+      if (
+        sensor.observationSeverity === "danger" ||
+        sensor.observationSeverity === "caution"
+      ) {
+        alerts.push({
+          id: `live-alert-${sensor.id}`,
+          sensorId: sensor.id,
+          sensorCode: sensor.sensorCode,
+          sensorName: sensor.name,
+          category: "tilt",
+          severity: sensor.observationSeverity,
+          startedAt,
+          measuredValue: sensor.tiltValue,
+          unit: "deg",
+          source: "demo",
+        });
+      }
+      if (sensor.lowBattery) {
+        alerts.push({
+          id: `live-battery-${sensor.id}`,
+          sensorId: sensor.id,
+          sensorCode: sensor.sensorCode,
+          sensorName: sensor.name,
+          category: "battery",
+          severity: "status",
+          startedAt,
+          measuredValue: sensor.batteryPercent,
+          unit: "%",
+          source: "demo",
+        });
+      }
+    }
+    return alerts;
+  }, [activeSensors, dataMode, effectiveRefreshedAt, snapshot.alerts]);
+
   const handleDeleteSensorFromMap = useCallback(
     async (sensorId: string) => {
       const targetSensor = activeSensors.find((s) => s.id === sensorId);
@@ -623,44 +707,95 @@ export function MonitoringHome({
   }, []);
 
   useEffect(() => {
-    if (newAlerts.length === 0) {
+    if (dataMode === "test" || newAlerts.length === 0) {
       return;
     }
     const timeoutId = window.setTimeout(dismissNewAlerts, 6_000);
     return () => window.clearTimeout(timeoutId);
-  }, [dismissNewAlerts, newAlerts.length]);
-  // 実機センサーまたは手動トリガーからの緊急警報検出 (Issue #16, #17)
-  const [isAlertDismissed, setIsAlertDismissed] = useState(false);
+  }, [dataMode, dismissNewAlerts, newAlerts.length]);
 
-  const activeEmergencyAlert = useMemo(() => {
-    if (manualEmergencyAlert) return manualEmergencyAlert;
-    if (isAlertDismissed) return null;
-    const tilted = activeSensors.find(
-      (s) => s.tiltValue !== null && s.tiltValue >= 15.0,
+  // 実機センサー（基準設定済みかつ15°以上のdanger）またはデモdangerからの緊急警報検出とラッチ保持 (Issue #17, #18)
+  const liveDangerSensor = useMemo(() => {
+    return (
+      activeSensors.find(
+        (s) =>
+          s.observationSeverity === "danger" &&
+          s.tiltValue !== null &&
+          s.tiltValue >= 15.0 &&
+          !dismissedDangerCodes[s.sensorCode],
+      ) ?? null
     );
-    if (tilted) {
-      return {
-        sensorId: tilted.id,
-        sensorName: tilted.name,
-        sensorCode: tilted.sensorCode,
-        tiltDeg: tilted.tiltValue ?? 15.0,
-        reason: "大きな姿勢変化（倒木・地滑りの危険）",
-      };
-    }
-    return null;
-  }, [manualEmergencyAlert, isAlertDismissed, activeSensors]);
+  }, [activeSensors, dismissedDangerCodes]);
 
   useEffect(() => {
-    const hasTilted = activeSensors.some(
-      (s) => s.tiltValue !== null && s.tiltValue >= 15.0,
-    );
-    if (!hasTilted && isAlertDismissed) {
+    if (liveDangerSensor) {
+      const alertPayload = {
+        sensorId: liveDangerSensor.id,
+        sensorName: liveDangerSensor.name,
+        sensorCode: liveDangerSensor.sensorCode,
+        code: liveDangerSensor.sensorCode,
+        tiltDeg: liveDangerSensor.tiltValue ?? 15.0,
+        reason: "大きな姿勢変化（倒木・地滑りの危険）",
+      };
       const timer = setTimeout(() => {
-        setIsAlertDismissed(false);
+        setLatchedEmergencyAlert(alertPayload);
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [activeSensors, isAlertDismissed]);
+  }, [liveDangerSensor]);
+
+  // センサーの傾斜が15°未満（normal / caution）に戻ったら確認解除フラグをクリアし、次回の再傾斜時に再発火可能にする
+  useEffect(() => {
+    const dismissedKeys = Object.keys(dismissedDangerCodes);
+    if (dismissedKeys.length === 0) return;
+    const recoveredCodes = dismissedKeys.filter((code) => {
+      const sensor = activeSensors.find((s) => s.sensorCode === code);
+      if (!sensor) return false;
+      return (
+        sensor.observationSeverity !== "danger" ||
+        sensor.tiltValue === null ||
+        sensor.tiltValue < 15.0
+      );
+    });
+    if (recoveredCodes.length > 0) {
+      const timer = setTimeout(() => {
+        setDismissedDangerCodes((prev) => {
+          const next = { ...prev };
+          for (const code of recoveredCodes) {
+            delete next[code];
+          }
+          return next;
+        });
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [activeSensors, dismissedDangerCodes]);
+
+  const activeEmergencyAlert = useMemo(() => {
+    if (manualEmergencyAlert) return manualEmergencyAlert;
+    if (liveDangerSensor) {
+      return {
+        sensorId: liveDangerSensor.id,
+        sensorName: liveDangerSensor.name,
+        sensorCode: liveDangerSensor.sensorCode,
+        code: liveDangerSensor.sensorCode,
+        tiltDeg: liveDangerSensor.tiltValue ?? 15.0,
+        reason: "大きな姿勢変化（倒木・地滑りの危険）",
+      };
+    }
+    if (
+      latchedEmergencyAlert &&
+      !dismissedDangerCodes[latchedEmergencyAlert.sensorCode]
+    ) {
+      return latchedEmergencyAlert;
+    }
+    return null;
+  }, [
+    dismissedDangerCodes,
+    latchedEmergencyAlert,
+    liveDangerSensor,
+    manualEmergencyAlert,
+  ]);
 
   useEffect(() => {
     if (activeEmergencyAlert) {
@@ -780,11 +915,11 @@ export function MonitoringHome({
                 type="button"
                 className={styles.pcEmergencyCalibrateBtn}
                 onClick={() => {
-                  void resetNodeBaseline(activeEmergencyAlert.sensorCode);
+                  void resetNodeBaseline(activeEmergencyAlert.code);
                 }}
                 title="現在取得されている角度を基準姿勢に確定し、角度を0.0°にリセットして警報を直ちに停止します"
               >
-                🎯 今の角度を基準姿勢に設定（角度0°・警報停止）
+                🎯 現在の姿勢を0°基準に再設定（角度0°・警報停止）
               </button>
               <button
                 type="button"
@@ -797,12 +932,27 @@ export function MonitoringHome({
                 type="button"
                 className={styles.pcEmergencyDismissBtn}
                 onClick={() => {
-                  setIsAlertDismissed(true);
+                  const codesToDismiss: Record<string, boolean> = {
+                    [activeEmergencyAlert.sensorCode]: true,
+                  };
+                  for (const s of activeSensors) {
+                    if (
+                      s.observationSeverity === "danger" ||
+                      (s.tiltValue !== null && s.tiltValue >= 15.0)
+                    ) {
+                      codesToDismiss[s.sensorCode] = true;
+                    }
+                  }
+                  setDismissedDangerCodes((prev) => ({
+                    ...prev,
+                    ...codesToDismiss,
+                  }));
+                  setLatchedEmergencyAlert(null);
                   setManualEmergencyAlert(null);
                   stopPcAlarm();
                 }}
               >
-                警報音を停止
+                🔕 警報を確認して解除（警報音を停止）
               </button>
             </div>
           </aside>
@@ -813,7 +963,10 @@ export function MonitoringHome({
               📱
               スマートフォンからアクセスされています。現場作業・実演用の専用画面を開きますか？
             </span>
-            <Link className={styles.mobileWarningLink} href="/mobile">
+            <Link
+              className={styles.mobileWarningLink}
+              href={dataMode === "test" ? "/mobile?mode=test" : "/mobile"}
+            >
               現場専用画面（/mobile）へ移動 ↗
             </Link>
           </aside>
@@ -922,12 +1075,12 @@ export function MonitoringHome({
               aria-label={
                 isWarningPanelOpen ? "警告パネルを閉じる" : "警告パネルを開く"
               }
-              className={`${styles.warningToggleBtn} ${snapshot.alerts.length > 0 ? styles.hasAlerts : ""}`}
+              className={`${styles.warningToggleBtn} ${activeAlerts.length > 0 ? styles.hasAlerts : ""}`}
               onClick={() => setIsWarningPanelOpen((v) => !v)}
               type="button"
             >
               <Icon name="alert" />
-              <span>警告一覧 ({snapshot.alerts.length})</span>
+              <span>警告一覧 ({activeAlerts.length})</span>
             </button>
           </div>
         </div>
@@ -950,8 +1103,8 @@ export function MonitoringHome({
           <div className={styles.headerActions}>
             <p className={styles.updatedAt}>
               <span>最終更新</span>
-              <time dateTime={snapshot.refreshedAt}>
-                {formatJapanDateTime(snapshot.refreshedAt)}
+              <time dateTime={effectiveRefreshedAt}>
+                {formatJapanDateTime(effectiveRefreshedAt)}
               </time>
               <i aria-label="更新状態: 正常" />
             </p>
@@ -1010,7 +1163,7 @@ export function MonitoringHome({
                 focusRequest={focusRequest}
                 resetViewRequest={resetViewRequest}
                 selectedSensorId={selectedSensorId}
-                sensors={snapshot.sensors}
+                sensors={activeSensors}
                 visibleSensorIds={visibleSensorIds}
                 onOpenDetails={openSensorDetails}
                 onSelectSensor={setSelectedSensorId}
@@ -1029,8 +1182,8 @@ export function MonitoringHome({
             <div className={styles.mapFooterActions}>
               <span className={styles.resultCount}>
                 <strong>{filteredSensors.length}台を表示</strong>
-                {filteredSensors.length < snapshot.sensors.length
-                  ? ` / ${snapshot.sensors.length - filteredSensors.length}台を非表示`
+                {filteredSensors.length < baseSensors.length
+                  ? ` / ${baseSensors.length - filteredSensors.length}台を非表示`
                   : null}
               </span>
               <Button
@@ -1047,19 +1200,21 @@ export function MonitoringHome({
 
       {isWarningPanelOpen && (
         <WarningPanel
-          alerts={snapshot.alerts}
+          alerts={activeAlerts}
           onFocusSensor={focusSensor}
           onTriggerTestAlert={() => {
             const target = activeSensors[0];
+            const code = target?.sensorCode ?? "T1";
             setManualEmergencyAlert({
               sensorId: target?.id ?? "DEMO-001",
               sensorName: target?.name ?? "樹木ノード T1（タニ装着）",
-              sensorCode: target?.sensorCode ?? "T1",
+              sensorCode: code,
+              code,
               tiltDeg: 24.5,
               reason: "大きな姿勢変化検知（実演ピッチ用）",
             });
           }}
-          refreshedAt={snapshot.refreshedAt}
+          refreshedAt={effectiveRefreshedAt}
           selectedSensorId={selectedSensorId}
         />
       )}
@@ -1067,15 +1222,15 @@ export function MonitoringHome({
       {/* マーカークリック時のハイブリッド詳細推移モーダル */}
       <SensorDetailModal
         isCalibrated={Boolean(
-          selectedModalSensor && baselines[selectedModalSensor.sensorCode],
+          currentModalSensor && baselines[currentModalSensor.sensorCode],
         )}
         onClose={() => setSelectedModalSensor(null)}
         onDeleteSensor={handleDeleteSensorFromMap}
         onResetBaseline={resetNodeBaseline}
-        sensor={selectedModalSensor}
+        sensor={currentModalSensor}
       />
 
-      {newAlerts.length > 0 ? (
+      {dataMode !== "test" && newAlerts.length > 0 ? (
         <div className={styles.toast} role="status">
           <Icon name="alert" />
           <div>

@@ -19,7 +19,13 @@ import {
   OBSERVATION_LABELS,
   sortAlerts,
 } from "../../monitoring/monitoring-utils";
-import type { DemoSensor } from "../../monitoring/types";
+import type {
+  CommunicationStatus,
+  DemoObservation,
+  DemoSensor,
+  DeviceFaultStatus,
+  ObservationSeverity,
+} from "../../monitoring/types";
 import { SensorTelemetryChart } from "./sensor-telemetry-chart";
 import styles from "./sensor-detail.module.css";
 
@@ -32,9 +38,44 @@ const TABS: Array<{ key: TabKey; label: string; later?: boolean }> = [
   { key: "inspections", label: "現地確認履歴", later: true },
 ];
 
+type DetailSeverity = ObservationSeverity | "unknown";
+type DetailCommunicationStatus = CommunicationStatus | "unknown";
+type DetailDeviceFaultStatus = DeviceFaultStatus | "unknown";
+
+export type DetailSensor = Omit<
+  DemoSensor,
+  | "observationSeverity"
+  | "communicationStatus"
+  | "deviceFaultStatus"
+  | "lowBattery"
+> & {
+  observationSeverity: DetailSeverity;
+  communicationStatus: DetailCommunicationStatus;
+  deviceFaultStatus: DetailDeviceFaultStatus;
+  lowBattery: boolean | null;
+};
+
+const SEVERITY_LABELS: Record<DetailSeverity, string> = {
+  ...OBSERVATION_LABELS,
+  unknown: "未判定",
+};
+
+const COMMUNICATION_LABELS: Record<DetailCommunicationStatus, string> = {
+  online: "オンライン",
+  offline: "通信断",
+  unknown: "未接続",
+};
+
+const DEVICE_STATUS_LABELS: Record<DetailDeviceFaultStatus, string> = {
+  ok: "故障なし",
+  fault: "故障",
+  unknown: "未判定",
+};
+
 type SensorDetailProps = {
   returnPath: "/map" | "/sensors";
-  sensor: DemoSensor;
+  sensor: DetailSensor;
+  initialObservations?: DemoObservation[];
 };
 
 function ObservationValue({
@@ -61,22 +102,35 @@ function ObservationValue({
   );
 }
 
-export function SensorDetail({ returnPath, sensor }: SensorDetailProps) {
+export function SensorDetail({
+  returnPath,
+  sensor,
+  initialObservations,
+}: SensorDetailProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const isDeviceTest = sensor.source === "device_test";
   const isStale = sensor.communicationStatus === "offline";
-  const observations = useMemo(
-    () =>
-      DEMO_DASHBOARD_OBSERVATIONS.filter(
-        (observation) => observation.sensorId === sensor.id,
-      ),
-    [sensor.id],
-  );
-  // 履歴APIは未実装のため、概要には現在のデモ警告だけを表示します。
+  const observations = useMemo(() => {
+    if (initialObservations) {
+      return initialObservations;
+    }
+    if (isDeviceTest) {
+      return [];
+    }
+    return DEMO_DASHBOARD_OBSERVATIONS.filter(
+      (observation) => observation.sensorId === sensor.id,
+    );
+  }, [initialObservations, isDeviceTest, sensor.id]);
+  // 履歴APIは未実装のため、デモ環境では現在のデモ警告だけを表示します。
   const activeAlerts = useMemo(
     () =>
-      sortAlerts(DEMO_ALERTS.filter((alert) => alert.sensorId === sensor.id)),
-    [sensor.id],
+      isDeviceTest
+        ? []
+        : sortAlerts(
+            DEMO_ALERTS.filter((alert) => alert.sensorId === sensor.id),
+          ),
+    [isDeviceTest, sensor.id],
   );
 
   const moveTabFocus = (
@@ -104,7 +158,13 @@ export function SensorDetail({ returnPath, sensor }: SensorDetailProps) {
 
   return (
     <main className={styles.appShell}>
-      <AppSidebar activePath="/sensors" demoDescription="架空データを表示中" />
+      <AppSidebar
+        activePath="/sensors"
+        demoDescription={
+          isDeviceTest ? "検証用DB・受信CSVを参照中" : "架空データを表示中"
+        }
+        environmentLabel={isDeviceTest ? "test環境" : "デモモード"}
+      />
 
       <section className={styles.workspace}>
         <header className={styles.topbar}>
@@ -112,16 +172,30 @@ export function SensorDetail({ returnPath, sensor }: SensorDetailProps) {
             <p>センサー / {sensor.sensorCode}</p>
             <div>
               <h1>{sensor.name}</h1>
-              <span className={styles.demoBadge}>デモ</span>
+              <span className={styles.demoBadge}>
+                {isDeviceTest ? "実機テスト" : "デモ"}
+              </span>
             </div>
           </div>
 
           <div className={styles.headerActions}>
             <p className={styles.referenceTime}>
-              <span>デモデータ基準時刻</span>
-              <time dateTime={DEMO_REFERENCE_TIME}>
-                {formatJapanDateTime(DEMO_REFERENCE_TIME)}
-              </time>
+              <span>
+                {isDeviceTest ? "最終受信時刻" : "デモデータ基準時刻"}
+              </span>
+              {isDeviceTest ? (
+                sensor.lastReceivedAt ? (
+                  <time dateTime={sensor.lastReceivedAt}>
+                    {formatJapanDateTime(sensor.lastReceivedAt)}
+                  </time>
+                ) : (
+                  <span>未受信</span>
+                )
+              ) : (
+                <time dateTime={DEMO_REFERENCE_TIME}>
+                  {formatJapanDateTime(DEMO_REFERENCE_TIME)}
+                </time>
+              )}
             </p>
             <Link className={styles.backLink} href={returnPath}>
               <span aria-hidden="true">←</span>
@@ -142,29 +216,25 @@ export function SensorDetail({ returnPath, sensor }: SensorDetailProps) {
             <div>
               <span>観測重要度</span>
               <StatusBadge
-                label={OBSERVATION_LABELS[sensor.observationSeverity]}
+                label={SEVERITY_LABELS[sensor.observationSeverity]}
                 status={sensor.observationSeverity}
               />
             </div>
             <div>
               <span>通信</span>
               <HealthBadge
-                label={
-                  sensor.communicationStatus === "online"
-                    ? "オンライン"
-                    : "通信断"
-                }
+                label={COMMUNICATION_LABELS[sensor.communicationStatus]}
                 status={sensor.communicationStatus}
               />
             </div>
             <div>
               <span>機器</span>
               <HealthBadge
-                label={sensor.deviceFaultStatus === "ok" ? "故障なし" : "故障"}
+                label={DEVICE_STATUS_LABELS[sensor.deviceFaultStatus]}
                 status={sensor.deviceFaultStatus}
               />
             </div>
-            {sensor.lowBattery ? (
+            {sensor.lowBattery === true ? (
               <div>
                 <span>電池</span>
                 <HealthBadge label="低電池" status="lowBattery" />
@@ -310,7 +380,9 @@ export function SensorDetail({ returnPath, sensor }: SensorDetailProps) {
                 <p>OBSERVATIONS</p>
                 <h2>観測推移</h2>
               </div>
-              <span>デモ30日・12時間間隔</span>
+              <span>
+                {isDeviceTest ? "実機受信データ" : "デモ30日・12時間間隔"}
+              </span>
             </div>
             <div className={styles.chartGrid}>
               {(
@@ -368,7 +440,9 @@ export function SensorDetail({ returnPath, sensor }: SensorDetailProps) {
           <footer className={styles.disclaimer}>
             <Icon name="alert" />
             <p>
-              表示値は架空のデモデータです。警報は参考情報であり、現地の安全を保証するものではありません。
+              {isDeviceTest
+                ? "表示値は実証実験の受信データです。警報は参考情報であり、現地の安全を保証するものではありません。"
+                : "表示値は架空のデモデータです。警報は参考情報であり、現地の安全を保証するものではありません。"}
             </p>
           </footer>
         </div>

@@ -18,6 +18,8 @@ type MeasuredPoint = {
 const WIDTH = 760;
 const HEIGHT = 236;
 const PADDING = { top: 18, right: 20, bottom: 34, left: 52 };
+const SINGLE_POINT_PADDING_MS = 60_000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export function splitObservationSegments(
   observations: DemoObservation[],
@@ -49,11 +51,12 @@ export function splitObservationSegments(
   return segments;
 }
 
-function formatAxisTime(value: number): string {
+function formatAxisTime(value: number, showTime: boolean): string {
   return new Intl.DateTimeFormat("ja-JP", {
     timeZone: "Asia/Tokyo",
     month: "numeric",
     day: "numeric",
+    ...(showTime ? { hour: "2-digit", minute: "2-digit" } : {}),
   }).format(new Date(value));
 }
 
@@ -74,11 +77,21 @@ export function SensorTelemetryChart({
     );
   }
 
-  const timestamps = observations.map((observation) =>
-    Date.parse(observation.measuredAt),
-  );
-  const minTime = Math.min(...timestamps);
-  const maxTime = Math.max(...timestamps);
+  const timestamps = observations
+    .map((observation) => Date.parse(observation.measuredAt))
+    .filter((time) => Number.isFinite(time));
+  const rawMinTime = Math.min(...timestamps);
+  const rawMaxTime = Math.max(...timestamps);
+  // 単一点や同一時刻データのときにX軸ラベルが左端に重ならないよう時間幅を確保します。
+  const minTime =
+    rawMinTime === rawMaxTime
+      ? rawMinTime - SINGLE_POINT_PADDING_MS
+      : rawMinTime;
+  const maxTime =
+    rawMinTime === rawMaxTime
+      ? rawMaxTime + SINGLE_POINT_PADDING_MS
+      : rawMaxTime;
+  const showTimeInAxis = maxTime - minTime <= ONE_DAY_MS;
   const values = points.map((point) => point.value);
   const rawMin = Math.min(...values);
   const rawMax = Math.max(...values);
@@ -136,7 +149,7 @@ export function SensorTelemetryChart({
             x={toX(tick)}
             y={HEIGHT - 8}
           >
-            {formatAxisTime(tick)}
+            {formatAxisTime(tick, showTimeInAxis)}
           </text>
         ))}
         {segments.map((segment, index) => {

@@ -19,6 +19,20 @@ type TestTelemetryChartProps = {
 const WIDTH = 720;
 const HEIGHT = 260;
 const PADDING = { top: 20, right: 22, bottom: 34, left: 58 };
+const SINGLE_POINT_PADDING_MS = 30_000;
+
+function isMissingTelemetryValue(
+  key: NumericKey,
+  value: number | null | undefined,
+): value is null | undefined {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return true;
+  }
+  if ((key === "soil_raw" || key === "battery_mv") && value === -1) {
+    return true;
+  }
+  return false;
+}
 
 function formatTime(value: number): string {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -34,9 +48,15 @@ export function TestTelemetryChart({
   series,
   title,
 }: TestTelemetryChartProps) {
-  const values = observations.flatMap((observation) =>
+  const validObservations = observations.filter((observation) =>
+    Number.isFinite(Date.parse(observation.received_at)),
+  );
+  const values = validObservations.flatMap((observation) =>
     series
-      .map(({ key }) => observation[key])
+      .map(({ key }) => {
+        const value = observation[key];
+        return isMissingTelemetryValue(key, value) ? null : value;
+      })
       .filter((value): value is number => value !== null),
   );
 
@@ -44,11 +64,20 @@ export function TestTelemetryChart({
     return <p className={styles.chartEmpty}>計測済みの値がありません</p>;
   }
 
-  const timestamps = observations.map(({ received_at }) =>
+  const timestamps = validObservations.map(({ received_at }) =>
     Date.parse(received_at),
   );
-  const minTime = Math.min(...timestamps);
-  const maxTime = Math.max(...timestamps);
+  const rawMinTime = Math.min(...timestamps);
+  const rawMaxTime = Math.max(...timestamps);
+  // 単一点や同一時刻データのときにX軸の3つの時刻ラベルが左端に重ならないようパディングを設けます。
+  const minTime =
+    rawMinTime === rawMaxTime
+      ? rawMinTime - SINGLE_POINT_PADDING_MS
+      : rawMinTime;
+  const maxTime =
+    rawMinTime === rawMaxTime
+      ? rawMaxTime + SINGLE_POINT_PADDING_MS
+      : rawMaxTime;
   const rawMin = Math.min(...values);
   const rawMax = Math.max(...values);
   const valuePadding = Math.max((rawMax - rawMin) * 0.12, 1);
@@ -66,27 +95,31 @@ export function TestTelemetryChart({
     (1 - (value - minValue) / Math.max(maxValue - minValue, 1)) * plotHeight;
 
   const chartSeries = series.map((definition) => {
-    const points = observations.flatMap((observation) => {
+    const points: Array<{ x: number; y: number }> = [];
+    const pathCommands: string[] = [];
+    let needsMove = true;
+
+    validObservations.forEach((observation) => {
       const value = observation[definition.key];
-      return value === null
-        ? []
-        : [
-            {
-              x: toX(Date.parse(observation.received_at)),
-              y: toY(value),
-            },
-          ];
+      if (isMissingTelemetryValue(definition.key, value)) {
+        needsMove = true;
+        return;
+      }
+      const point = {
+        x: toX(Date.parse(observation.received_at)),
+        y: toY(value),
+      };
+      points.push(point);
+      pathCommands.push(
+        `${needsMove ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`,
+      );
+      needsMove = false;
     });
 
     return {
       ...definition,
       points,
-      path: points
-        .map(
-          (point, index) =>
-            `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`,
-        )
-        .join(" "),
+      path: pathCommands.join(" "),
     };
   });
 

@@ -7,11 +7,17 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings, get_settings
 
+SQLITE_BUSY_TIMEOUT_SECONDS = 30
+
 
 @lru_cache
 def get_engine(database_url: str) -> Engine:
     # SQLite検証環境でもFastAPIの別スレッドから安全に接続できるようにします。
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    connect_args = (
+        {"check_same_thread": False, "timeout": SQLITE_BUSY_TIMEOUT_SECONDS}
+        if database_url.startswith("sqlite")
+        else {}
+    )
     return create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
 
 

@@ -337,11 +337,34 @@
   filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.4));
 }
 
+.selectedMarker .markerPin {
+  stroke: #2563eb;
+  stroke-width: 4.5px;
+  filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.7));
+}
+
+.offlineMarker .markerPin {
+  stroke-dasharray: 4 2;
+  opacity: 0.75;
+}
+
+.offlineBadgeBg {
+  fill: #64748b;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+
+.offlineBadgeText {
+  fill: #ffffff;
+  font-size: 9px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
 .markerSymbol {
   font-size: 16px;
   pointer-events: none;
 }
-
 .codeTagRect {
   fill: #1e293b;
   stroke: #ffffff;

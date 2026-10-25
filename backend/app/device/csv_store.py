@@ -38,7 +38,7 @@ class ObservationCsvStore:
             write_header = not self._path.exists() or self._path.stat().st_size == 0
             if not write_header:
                 self._validate_existing_header()
-
+                write_header = not self._path.exists() or self._path.stat().st_size == 0
             with self._path.open("a", encoding="utf-8", newline="") as csv_file:
                 writer = csv.writer(csv_file, lineterminator="\r\n")
                 if write_header:
@@ -62,8 +62,13 @@ class ObservationCsvStore:
                 csv_file.flush()
 
     def _validate_existing_header(self) -> None:
-        with self._path.open("r", encoding="utf-8", newline="") as csv_file:
-            reader = csv.reader(csv_file)
-            header = next(reader, None)
-        if tuple(header or ()) != CSV_COLUMNS:
+        try:
+            with self._path.open("r", encoding="utf-8-sig", newline="") as csv_file:
+                reader = csv.reader(csv_file)
+                header = next(reader, None)
+        except FileNotFoundError:
+            return
+        if header is None:
+            return
+        if tuple(header) != CSV_COLUMNS:
             raise ValueError("保存先CSVのヘッダーが現行仕様と一致しません")

@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class MountainCreate(BaseModel):
@@ -21,6 +22,15 @@ class MountainCreate(BaseModel):
         if not normalized:
             raise ValueError("空白以外の文字を入力してください")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_coordinate_bounds(self) -> Self:
+        # 最小・最大座標の逆転やゼロ幅領域による地図計算のゼロ除算を防ぎます。
+        if self.min_latitude >= self.max_latitude:
+            raise ValueError("最小緯度は最大緯度より小さい値を指定してください")
+        if self.min_longitude >= self.max_longitude:
+            raise ValueError("最小経度は最大経度より小さい値を指定してください")
+        return self
 
 
 class MountainResponse(BaseModel):

@@ -16,7 +16,12 @@ type PageProps = {
 
 export default async function MobilePage({ searchParams }: PageProps) {
   const resolvedParams = searchParams ? await searchParams : undefined;
-  const initialMode = resolvedParams?.mode === "test" ? "test" : "demo";
+  const defaultMode = process.env.SANMOU_APP_ENV === "test" ? "test" : "demo";
+  const initialMode = resolvedParams?.mode
+    ? resolvedParams.mode === "test"
+      ? "test"
+      : "demo"
+    : defaultMode;
   const initialNode = resolvedParams?.node ?? "T1";
 
   return <MobileHome dataMode={initialMode} initialNodeId={initialNode} />;

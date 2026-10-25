@@ -61,3 +61,33 @@ def test_create_and_list_mountains(mountain_client: TestClient) -> None:
     items = list_res.json()["items"]
     assert len(items) == 1
     assert items[0]["id"] == created["id"]
+
+
+@pytest.mark.parametrize(
+    ("min_lat", "max_lat", "min_lng", "max_lng"),
+    [
+        (35.0250, 35.0080, 136.4150, 136.4550),
+        (35.0080, 35.0080, 136.4150, 136.4550),
+        (35.0080, 35.0250, 136.4550, 136.4150),
+        (35.0080, 35.0250, 136.4150, 136.4150),
+    ],
+)
+def test_rejects_inverted_or_equal_coordinate_bounds(
+    mountain_client: TestClient,
+    min_lat: float,
+    max_lat: float,
+    min_lng: float,
+    max_lng: float,
+) -> None:
+    payload = {
+        "name": "御在所岳",
+        "area_name": "本谷・一ノ谷工区",
+        "min_latitude": min_lat,
+        "max_latitude": max_lat,
+        "min_longitude": min_lng,
+        "max_longitude": max_lng,
+    }
+
+    res = mountain_client.post("/mountains", json=payload)
+
+    assert res.status_code == 422

@@ -1,10 +1,14 @@
+import os
 from datetime import UTC, datetime
+from pathlib import Path
 from secrets import compare_digest
+from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from app.core.config import Settings, get_settings
 from app.device.csv_reader import ObservationCsvFormatError, read_observation_csv
+from app.device.csv_store import CSV_COLUMNS
 from app.schemas.common import ErrorResponse
 from app.schemas.test_observations import TestObservationListResponse
 
@@ -24,7 +28,7 @@ router = APIRouter(prefix="/test", tags=["test-environment"])
         503: {"model": ErrorResponse},
     },
 )
-async def list_test_observations(
+def list_test_observations(
     limit: int = Query(default=500, ge=1, le=2000),
     node_id: str | None = Query(default=None, min_length=1, max_length=64),
     settings: Settings = Depends(get_settings),  # noqa: B008
@@ -65,7 +69,7 @@ async def list_test_observations(
         503: {"model": ErrorResponse},
     },
 )
-async def clear_test_observations(
+def clear_test_observations(
     settings: Settings = Depends(get_settings),  # noqa: B008
     test_token: str | None = Header(default=None, alias="X-Test-Token"),  # noqa: B008
 ) -> None:
@@ -80,6 +84,23 @@ async def clear_test_observations(
 
     csv_path = settings.observation_csv_path
     if csv_path.exists():
-        from app.device.csv_store import CSV_COLUMNS
-
-        csv_path.write_text(",".join(CSV_COLUMNS) + "\n", encoding="utf-8")
+        # シリアル受信の追記と競合しないよう、一時ファイル経由でアトミックに置換する。
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path: Path | None = None
+        try:
+            with NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="",
+                dir=csv_path.parent,
+                delete=False,
+                suffix=".tmp",
+            ) as tmp_file:
+                tmp_path = Path(tmp_file.name)
+                tmp_file.write(",".join(CSV_COLUMNS) + "\n")
+                tmp_file.flush()
+            os.replace(tmp_path, csv_path)
+        except OSError:
+            if tmp_path is not None and tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+            raise
