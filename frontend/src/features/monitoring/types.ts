@@ -60,14 +60,19 @@ export type DemoObservation = {
   source: "demo";
 };
 
-// 複数山林・工区の階層管理用モデル
+// 複数山林・工区の階層管理用モデル（GIS Ground Overlay対応）
 export type MountainArea = {
   id: string;
   name: string;
   areaName: string;
-  description: string;
-  centerLatitude: number;
-  centerLongitude: number;
+  description?: string | null;
+  minLatitude?: number;
+  maxLatitude?: number;
+  minLongitude?: number;
+  maxLongitude?: number;
+  mapImageUrl?: string | null;
+  centerLatitude?: number;
+  centerLongitude?: number;
 };
 
 // 表示レイヤーの識別子

@@ -27,7 +27,11 @@ export function useTestObservations(): TestObservationState {
         throw new Error(`観測APIが応答しませんでした（${response.status}）`);
       }
       const nextData = (await response.json()) as TestObservationResponse;
-      setData(nextData);
+      // 長期開きっぱなし稼働でのメモリ肥大化を防ぐため、最新500件のスライディングウィンドウで上限固定
+      const cappedItems = Array.isArray(nextData.items)
+        ? nextData.items.slice(-500)
+        : [];
+      setData({ ...nextData, items: cappedItems });
       setError(null);
     } catch (reason) {
       setError(

@@ -12,6 +12,20 @@ import type {
 // 座標・名称・観測値はすべて開発用の架空データです。
 export const DEMO_MOUNTAINS: MountainArea[] = [
   {
+    id: "gozaisyo-01",
+    name: "御在所岳",
+    areaName: "本谷・一ノ谷工区（ロープウェイ周辺）",
+    description:
+      "鈴鹿山脈 主峰。急傾斜地すべり危険箇所指定区域。山上公園〜鈴鹿スカイライン間法面監視。",
+    minLatitude: 35.008,
+    maxLatitude: 35.025,
+    minLongitude: 136.415,
+    maxLongitude: 136.455,
+    mapImageUrl: "/maps/gozaisyo_toukousen.png",
+    centerLatitude: 35.0165,
+    centerLongitude: 136.435,
+  },
+  {
     id: "shirakami-03",
     name: "白神山地",
     areaName: "第3工区（北沢・東尾根）",

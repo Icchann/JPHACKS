@@ -102,6 +102,11 @@
   transition: transform 0.2s ease-out;
 }
 
+.groundOverlayImage {
+  pointer-events: none;
+  filter: contrast(1.05) brightness(0.98);
+}
+
 /* 森林区画ポリゴン */
 .coniferZone {
   fill: #e5eedb;

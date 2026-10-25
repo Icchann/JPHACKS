@@ -28,6 +28,7 @@ import type {
   LayerVisibility,
   MapLayerId,
   MapPresetMode,
+  MountainArea,
   ObservationSeverity,
 } from "../types";
 import { useTestObservations } from "../../dashboard/use-test-observations";
@@ -121,7 +122,124 @@ export function MonitoringHome({
 
   // 林業現場向け新機能: 開閉サイドバー、複数山選択、レイヤー制御、詳細モーダル
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedMountainId, setSelectedMountainId] = useState("shirakami-03");
+  const [mountainsList, setMountainsList] =
+    useState<MountainArea[]>(DEMO_MOUNTAINS);
+  const [selectedMountainId, setSelectedMountainId] =
+    useState<string>("gozaisyo-01");
+  const [isAddMountainOpen, setIsAddMountainOpen] = useState(false);
+  const [newMountainName, setNewMountainName] = useState("");
+  const [newAreaName, setNewAreaName] = useState("");
+  const [newMapImageUrl, setNewMapImageUrl] = useState(
+    "/maps/gozaisyo_toukousen.png",
+  );
+
+  // SQLiteから登録済み山林工区（下絵画像URL・境界範囲）を取得
+  useEffect(() => {
+    let isMounted = true;
+    async function loadMountains() {
+      try {
+        const response = await fetch("/api/backend/mountains", {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const result = (await response.json()) as {
+          items: Array<{
+            id: string;
+            name: string;
+            area_name: string;
+            description: string | null;
+            min_latitude: number;
+            max_latitude: number;
+            min_longitude: number;
+            max_longitude: number;
+            map_image_url: string | null;
+          }>;
+        };
+        if (!isMounted || !result.items || result.items.length === 0) return;
+
+        const converted: MountainArea[] = result.items.map((m) => ({
+          id: m.id,
+          name: m.name,
+          areaName: m.area_name,
+          description: m.description,
+          minLatitude: m.min_latitude,
+          maxLatitude: m.max_latitude,
+          minLongitude: m.min_longitude,
+          maxLongitude: m.max_longitude,
+          mapImageUrl: m.map_image_url,
+          centerLatitude: (m.min_latitude + m.max_latitude) / 2,
+          centerLongitude: (m.min_longitude + m.max_longitude) / 2,
+        }));
+        setMountainsList(converted);
+        if (!converted.some((m) => m.id === selectedMountainId)) {
+          setSelectedMountainId(converted[0]?.id ?? "gozaisyo-01");
+        }
+      } catch {
+        // API未接続時はDEMO_MOUNTAINSを維持
+      }
+    }
+
+    void loadMountains();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedMountainId]);
+
+  const handleCreateMountain = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMountainName.trim() || !newAreaName.trim()) return;
+
+    try {
+      const response = await fetch("/api/backend/mountains", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newMountainName.trim(),
+          area_name: newAreaName.trim(),
+          min_latitude: 35.008,
+          max_latitude: 35.025,
+          min_longitude: 136.415,
+          max_longitude: 136.455,
+          map_image_url:
+            newMapImageUrl.trim() || "/maps/gozaisyo_toukousen.png",
+        }),
+      });
+      if (response.ok) {
+        const created = (await response.json()) as {
+          id: string;
+          name: string;
+          area_name: string;
+          description: string | null;
+          min_latitude: number;
+          max_latitude: number;
+          min_longitude: number;
+          max_longitude: number;
+          map_image_url: string | null;
+        };
+        const newArea: MountainArea = {
+          id: created.id,
+          name: created.name,
+          areaName: created.area_name,
+          description: created.description,
+          minLatitude: created.min_latitude,
+          maxLatitude: created.max_latitude,
+          minLongitude: created.min_longitude,
+          maxLongitude: created.max_longitude,
+          mapImageUrl: created.map_image_url,
+          centerLatitude: (created.min_latitude + created.max_latitude) / 2,
+          centerLongitude: (created.min_longitude + created.max_longitude) / 2,
+        };
+        setMountainsList((prev) => [...prev, newArea]);
+        setSelectedMountainId(newArea.id);
+        setIsAddMountainOpen(false);
+        setNewMountainName("");
+        setNewAreaName("");
+      }
+    } catch {
+      // エラーハンドリング
+    }
+  };
+
   const [layerStates, setLayerStates] =
     useState<Record<MapLayerId, LayerVisibility>>(DEFAULT_LAYER_STATES);
   const [activePreset, setActivePreset] = useState<MapPresetMode>("disaster");
@@ -135,9 +253,10 @@ export function MonitoringHome({
 
   const currentMountain = useMemo(
     () =>
-      DEMO_MOUNTAINS.find((m) => m.id === selectedMountainId) ??
+      mountainsList.find((m) => m.id === selectedMountainId) ??
+      mountainsList[0] ??
       DEMO_MOUNTAINS[0],
-    [selectedMountainId],
+    [mountainsList, selectedMountainId],
   );
   // 実機モード時は台帳データのみを採用し、デモデータとの混在を完全排除
   const baseSensors = useMemo(() => {
@@ -399,7 +518,7 @@ export function MonitoringHome({
               className={styles.engineSwitcher}
               role="group"
             >
-              {DEMO_MOUNTAINS.map((m) => (
+              {mountainsList.map((m) => (
                 <button
                   aria-pressed={m.id === selectedMountainId}
                   className={`${styles.engineBtn} ${m.id === selectedMountainId ? styles.activeEngine : ""}`}
@@ -410,6 +529,15 @@ export function MonitoringHome({
                   {m.name}
                 </button>
               ))}
+              <button
+                aria-label="新しい山林工区を登録"
+                className={styles.addMountainBtn}
+                onClick={() => setIsAddMountainOpen(true)}
+                title="新しい山林工区・下絵図面を登録"
+                type="button"
+              >
+                ＋
+              </button>
             </div>
 
             <LayerController
@@ -500,12 +628,13 @@ export function MonitoringHome({
             {mapViewEngine === "offline_svg" ? (
               <OfflineMountainMap
                 layerStates={layerStates}
+                mapImageUrl={currentMountain.mapImageUrl}
                 mountainName={`${currentMountain.name} ${currentMountain.areaName}`}
-                onSelectSensor={(sensor) => setSelectedModalSensor(sensor)}
                 overlayPaths={DEMO_OVERLAY_PATHS}
                 overlayPoints={DEMO_OVERLAY_POINTS}
                 selectedSensorId={selectedSensorId}
                 sensors={activeSensors}
+                onSelectSensor={(sensor) => setSelectedModalSensor(sensor)}
               />
             ) : (
               <SatelliteMap
@@ -578,6 +707,76 @@ export function MonitoringHome({
           </button>
         </div>
       ) : null}
+
+      {/* 新規山林工区・下絵地図の登録モーダル */}
+      {isAddMountainOpen && (
+        <div
+          className={styles.modalBackdrop}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsAddMountainOpen(false);
+          }}
+        >
+          <div
+            aria-labelledby="add-mountain-title"
+            aria-modal="true"
+            className={styles.mountainModal}
+            role="dialog"
+          >
+            <header className={styles.modalHeader}>
+              <h3 id="add-mountain-title">🌲 新規山林工区の登録</h3>
+              <button
+                aria-label="閉じる"
+                className={styles.modalCloseBtn}
+                onClick={() => setIsAddMountainOpen(false)}
+                type="button"
+              >
+                ✕
+              </button>
+            </header>
+            <form onSubmit={handleCreateMountain} className={styles.modalForm}>
+              <label className={styles.formField}>
+                <span>山林名</span>
+                <input
+                  placeholder="例: 御在所岳"
+                  required
+                  value={newMountainName}
+                  onChange={(e) => setNewMountainName(e.target.value)}
+                />
+              </label>
+              <label className={styles.formField}>
+                <span>工区名・林班</span>
+                <input
+                  placeholder="例: 本谷・一ノ谷工区"
+                  required
+                  value={newAreaName}
+                  onChange={(e) => setNewAreaName(e.target.value)}
+                />
+              </label>
+              <label className={styles.formField}>
+                <span>下絵地図画像パス</span>
+                <input
+                  placeholder="/maps/gozaisyo_toukousen.png"
+                  value={newMapImageUrl}
+                  onChange={(e) => setNewMapImageUrl(e.target.value)}
+                />
+                <small>※ 森林基本図スキャンPNGまたは航空写真画像</small>
+              </label>
+              <footer className={styles.modalFooter}>
+                <button
+                  type="button"
+                  className={styles.cancelBtn}
+                  onClick={() => setIsAddMountainOpen(false)}
+                >
+                  キャンセル
+                </button>
+                <button type="submit" className={styles.submitBtn}>
+                  山林工区を保存
+                </button>
+              </footer>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

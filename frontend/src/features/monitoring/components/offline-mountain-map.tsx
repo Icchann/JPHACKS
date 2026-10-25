@@ -17,6 +17,7 @@ type OfflineMountainMapProps = {
   overlayPaths?: OverlayPath[];
   layerStates: Record<MapLayerId, LayerVisibility>;
   mountainName?: string;
+  mapImageUrl?: string | null;
   className?: string;
 };
 
@@ -33,6 +34,7 @@ export function OfflineMountainMap({
   overlayPaths = [],
   layerStates,
   mountainName = "白神山地 第3工区",
+  mapImageUrl,
   className,
 }: OfflineMountainMapProps) {
   const [hoveredSensor, setHoveredSensor] = useState<DemoSensor | null>(null);
@@ -263,6 +265,28 @@ export function OfflineMountainMap({
             height={SVG_HEIGHT}
             width={SVG_WIDTH}
           />
+
+          {/* 世の中のGIS標準: 実物の等高線図・航空写真の画像グラウンド・オーバーレイ */}
+          {mapImageUrl && (
+            <image
+              className={styles.groundOverlayImage}
+              height={Math.max(
+                project(bounds.minLat, bounds.maxLon).y -
+                  project(bounds.maxLat, bounds.minLon).y,
+                10,
+              )}
+              href={mapImageUrl}
+              opacity={0.92}
+              preserveAspectRatio="none"
+              width={Math.max(
+                project(bounds.minLat, bounds.maxLon).x -
+                  project(bounds.maxLat, bounds.minLon).x,
+                10,
+              )}
+              x={project(bounds.maxLat, bounds.minLon).x}
+              y={project(bounds.maxLat, bounds.minLon).y}
+            />
+          )}
 
           {/* 森林区画ポリゴン（スギ・ヒノキ針葉樹林帯、天然生広葉樹林帯） */}
           <g className={styles.forestZones} opacity={0.85}>
