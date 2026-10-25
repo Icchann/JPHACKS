@@ -86,6 +86,12 @@
   align-items: center;
   justify-content: center;
   background: #fbf9f4;
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvasContainer.dragging {
+  cursor: grabbing;
 }
 
 .svgCanvas {

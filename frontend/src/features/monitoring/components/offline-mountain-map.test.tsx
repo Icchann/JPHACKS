@@ -55,4 +55,26 @@ describe("OfflineMountainMap", () => {
     fireEvent.click(zoomInBtn);
     expect(zoomInBtn).toBeInTheDocument();
   });
+
+  it("ドラッグ操作および全体表示リセットができる", () => {
+    render(
+      <OfflineMountainMap
+        layerStates={DEFAULT_LAYER_STATES}
+        onSelectSensor={vi.fn()}
+        sensors={DEMO_SENSORS}
+      />,
+    );
+
+    const canvas = screen.getByLabelText(/山林観測地図/).parentElement;
+    expect(canvas).not.toBeNull();
+    if (canvas) {
+      fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(canvas, { clientX: 150, clientY: 180 });
+      fireEvent.mouseUp(canvas);
+    }
+
+    const resetBtn = screen.getByRole("button", { name: "リセット" });
+    fireEvent.click(resetBtn);
+    expect(resetBtn).toBeInTheDocument();
+  });
 });

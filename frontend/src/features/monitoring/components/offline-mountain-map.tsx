@@ -41,6 +41,79 @@ export function OfflineMountainMap({
     y: number;
   } | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
+
+  // 地図のドラッグ＆ドロップによる自由なスクロール（パン移動）
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // センサーピンクリック時はドラッグ移動を開始しない
+    if ((e.target as HTMLElement).closest(`.${styles.sensorMarkerGroup}`)) {
+      return;
+    }
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPanOffset({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y,
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // マウスホイールやトラックパッドによるスクロール・パン移動
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      setZoomLevel((prev) => Math.min(Math.max(prev * zoomFactor, 0.7), 2.5));
+    } else {
+      setPanOffset((prev) => ({
+        x: prev.x - e.deltaX,
+        y: prev.y - e.deltaY,
+      }));
+    }
+  };
+
+  // タッチ操作（タブレット・スマホ・タッチ対応PC）でのスクロール対応
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1 && e.touches[0]) {
+      setIsDragging(true);
+      setDragStart({
+        x: e.touches[0].clientX - panOffset.x,
+        y: e.touches[0].clientY - panOffset.y,
+      });
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || e.touches.length !== 1 || !e.touches[0]) return;
+    setPanOffset({
+      x: e.touches[0].clientX - dragStart.x,
+      y: e.touches[0].clientY - dragStart.y,
+    });
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+
+  const resetView = () => {
+    setZoomLevel(1);
+    setPanOffset({ x: 0, y: 0 });
+  };
   const uniqueId = useId();
 
   // 全センサーとオーバーレイから緯度経度のバウンディングボックスを算出
@@ -130,7 +203,7 @@ export function OfflineMountainMap({
             <button
               aria-label="リセット"
               className={styles.zoomButton}
-              onClick={() => setZoomLevel(1)}
+              onClick={resetView}
               type="button"
             >
               全体表示
@@ -147,11 +220,23 @@ export function OfflineMountainMap({
         </div>
       </header>
 
-      <div className={styles.canvasContainer}>
+      <div
+        className={`${styles.canvasContainer} ${isDragging ? styles.dragging : ""}`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
         <svg
           aria-label={`${mountainName}の山林観測地図`}
           className={styles.svgCanvas}
-          style={{ transform: `scale(${zoomLevel})` }}
+          style={{
+            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
+          }}
           viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
         >
           <defs>
@@ -545,8 +630,8 @@ export function OfflineMountainMap({
             aria-label="センサー簡易情報"
             className={styles.hoverTooltip}
             style={{
-              left: `${(hoverPosition.x / SVG_WIDTH) * 100}%`,
-              top: `${(hoverPosition.y / SVG_HEIGHT) * 100}%`,
+              left: `calc(${(hoverPosition.x / SVG_WIDTH) * 100}% + ${panOffset.x}px)`,
+              top: `calc(${(hoverPosition.y / SVG_HEIGHT) * 100}% + ${panOffset.y}px)`,
             }}
           >
             <header className={styles.tooltipHeader}>
