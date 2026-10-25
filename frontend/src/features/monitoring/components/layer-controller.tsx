@@ -80,6 +80,7 @@ export function LayerController({
   return (
     <div className={`${styles.container} ${className ?? ""}`.trim()}>
       <button
+        data-sanmou-button="secondary"
         aria-expanded={isOpen}
         aria-label="地図の表示レイヤーを切り替える"
         className={styles.triggerButton}
@@ -103,6 +104,7 @@ export function LayerController({
               </p>
             </div>
             <button
+              data-sanmou-button="secondary"
               aria-label="パネルを閉じる"
               className={styles.closeButton}
               onClick={onToggleOpen}
@@ -117,6 +119,8 @@ export function LayerController({
             <div className={styles.presetButtons}>
               {PRESETS.map((preset) => (
                 <button
+                  data-sanmou-button="secondary"
+                  aria-pressed={activePreset === preset.id}
                   key={preset.id}
                   className={`${styles.presetButton} ${
                     activePreset === preset.id ? styles.activePreset : ""
@@ -157,6 +161,7 @@ export function LayerController({
                     role="group"
                   >
                     <button
+                      data-sanmou-button="secondary"
                       aria-pressed={currentVisibility === "visible"}
                       className={`${styles.toggleOpt} ${
                         currentVisibility === "visible" ? styles.activeOpt : ""
@@ -168,6 +173,7 @@ export function LayerController({
                       表示
                     </button>
                     <button
+                      data-sanmou-button="secondary"
                       aria-pressed={currentVisibility === "faded"}
                       className={`${styles.toggleOpt} ${
                         currentVisibility === "faded" ? styles.activeOpt : ""
@@ -179,6 +185,7 @@ export function LayerController({
                       薄く
                     </button>
                     <button
+                      data-sanmou-button="secondary"
                       aria-pressed={currentVisibility === "hidden"}
                       className={`${styles.toggleOpt} ${
                         currentVisibility === "hidden" ? styles.activeOpt : ""
@@ -187,7 +194,7 @@ export function LayerController({
                       title="非表示"
                       type="button"
                     >
-                      消す
+                      非表示
                     </button>
                   </div>
                 </div>

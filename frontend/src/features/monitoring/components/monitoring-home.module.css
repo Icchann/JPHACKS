@@ -845,7 +845,9 @@
 }
 
 .warningCard:hover {
-  border-color: var(--border-strong);
+  border-color: #8ca18a;
+  background: #edf4e6;
+  color: var(--text);
 }
 
 .warningCard[data-selected="true"] {
@@ -1415,4 +1417,43 @@
 .resetT1AngleBtn:hover {
   background: #ccfbf1;
   border-color: #14b8a6;
+}
+
+/* ボタンの影とフォーカス枠が親要素で切れない余白を確保します。 */
+.engineSwitcher {
+  gap: 6px;
+  padding: 5px 6px 8px;
+  overflow: visible;
+  flex-wrap: wrap;
+}
+
+/* 警告の色は左端とバッジに限定し、本文は常に読める配色を保ちます。 */
+.warningCard {
+  align-items: stretch;
+  min-height: 44px;
+  line-height: 1.6;
+}
+
+.warningCard[data-selected="true"]:hover {
+  background: #edf4e6;
+  color: var(--text);
+}
+
+.warningCard:focus-visible {
+  outline: 3px solid #b47b11;
+  outline-offset: 2px;
+}
+/* 地図の最低高さに押されて、上部の行が縮んで重なることを防ぎます。 */
+.workspace > * {
+  flex-shrink: 0;
+}
+
+.mapSection {
+  flex: 1 0 auto;
+  min-height: 580px;
+}
+
+.topbar {
+  flex-wrap: wrap;
+  padding-block: 12px;
 }

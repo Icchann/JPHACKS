@@ -560,3 +560,20 @@
     grid-template-columns: 1fr;
   }
 }
+/* タブは濃い塗りにせず、淡い背景と下線で選択位置を伝えます。 */
+.tabs button[data-sanmou-button][aria-selected="true"] {
+  background: #e4efdf;
+  color: #174e36;
+  border: 1px solid #6f8773;
+}
+
+.tabs button[data-sanmou-button]:not(:disabled):hover {
+  background: #edf4e6;
+  color: #174e36;
+  filter: none;
+}
+
+.tabs {
+  gap: 8px;
+  padding-bottom: 6px;
+}

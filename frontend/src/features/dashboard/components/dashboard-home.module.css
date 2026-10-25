@@ -174,17 +174,17 @@
   border-radius: 999px;
   color: var(--device);
   font-size: 12px;
-  background: color-mix(in srgb, var(--device), transparent 87%);
+  background: transparent;
 }
 
 .alertCard[data-severity="danger"] .alertTopline strong {
   color: var(--danger);
-  background: color-mix(in srgb, var(--danger), transparent 87%);
+  background: transparent;
 }
 
 .alertCard[data-severity="caution"] .alertTopline strong {
   color: var(--caution);
-  background: color-mix(in srgb, var(--caution), transparent 87%);
+  background: transparent;
 }
 
 .alertTopline time {
@@ -241,22 +241,33 @@
   padding: 16px;
 }
 
-.metricDot {
-  width: 10px;
-  height: 10px;
+/* 集計欄のランプは光源の質感だけを付け、点滅はさせません。 */
+.metricDot,
+.deviceRows i {
+  --lamp-color: #378351;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--lamp-color), black 24%);
   border-radius: 50%;
-  background: var(--normal);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--normal), transparent 83%);
+  background: radial-gradient(
+    circle at 35% 28%,
+    #fffef2 0%,
+    color-mix(in srgb, var(--lamp-color), white 55%) 20%,
+    var(--lamp-color) 58%,
+    color-mix(in srgb, var(--lamp-color), black 28%) 100%
+  );
+  box-shadow:
+    inset 0 1px 2px rgb(255 255 255 / 65%),
+    0 0 6px color-mix(in srgb, var(--lamp-color), transparent 55%);
 }
 
 .metricCard[data-severity="caution"] .metricDot {
-  background: var(--caution);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--caution), transparent 83%);
+  --lamp-color: #e3a008;
 }
 
 .metricCard[data-severity="danger"] .metricDot {
-  background: var(--danger);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger), transparent 83%);
+  --lamp-color: #d94336;
 }
 
 .metricCard div {
@@ -332,20 +343,17 @@
   font-size: 12px;
 }
 
-.deviceRows i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--normal);
+/* 機器の集計も同じ電球表現にし、文字ラベルで状態を区別します。 */
+.deviceRows i[data-status="offline"] {
+  --lamp-color: #929fa9;
 }
 
-.deviceRows i[data-status="offline"],
 .deviceRows i[data-status="fault"] {
-  background: var(--device);
+  --lamp-color: #d94336;
 }
 
 .deviceRows i[data-status="battery"] {
-  background: var(--caution);
+  --lamp-color: #e3a008;
 }
 
 .deviceRows strong {
@@ -623,4 +631,26 @@
   .alertCard {
     transition: none;
   }
+}
+
+/* 文字自体にぼかしをかけず、背後の色だけを柔らかく広げます。 */
+.alertTopline strong {
+  position: relative;
+  isolation: isolate;
+}
+
+.alertTopline strong::before {
+  position: absolute;
+  z-index: -1;
+  inset: 1px -2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.14;
+  filter: blur(5px);
+  content: "";
+  pointer-events: none;
+}
+
+.alertCard[data-severity="status"] .alertTopline strong {
+  color: #5e6d78;
 }

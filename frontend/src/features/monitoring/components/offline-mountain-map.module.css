@@ -504,3 +504,19 @@
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ボタンの影とフォーカス枠が親要素で切れない余白を確保します。 */
+.zoomControls {
+  gap: 6px;
+  padding: 5px 6px 8px;
+  overflow: visible;
+  flex-wrap: wrap;
+}
+/* 淡い背景とボタン間の区切りが重なっても、各操作の輪郭を保ちます。 */
+.zoomControls .zoomButton {
+  border: 1px solid #6f8773;
+}
+
+.zoomControls .zoomButton:not(:last-child) {
+  border-right-color: #6f8773;
+}

@@ -629,6 +629,7 @@ export function SensorManagement({
               <span aria-hidden="true">✓</span>
               {statusMessage}
               <button
+                data-sanmou-button="secondary"
                 aria-label="完了メッセージを閉じる"
                 type="button"
                 onClick={() => setStatusMessage(null)}
@@ -690,6 +691,7 @@ export function SensorManagement({
                   />
                   {query ? (
                     <button
+                      data-sanmou-button="secondary"
                       aria-label="検索をクリア"
                       type="button"
                       onClick={() => setQuery("")}
@@ -787,11 +789,11 @@ export function SensorManagement({
                       ) : (
                         <Link
                           aria-label={`${sensor.sensorCode}の状態を確認`}
+                          data-sanmou-button="secondary"
                           className={styles.detailLink}
                           href={`/sensors/${encodeURIComponent(sensor.id)}?from=sensors`}
                         >
                           状態を確認
-                          <span aria-hidden="true">→</span>
                         </Link>
                       )}
                       <Button
@@ -847,6 +849,7 @@ export function SensorManagement({
                 </h2>
               </div>
               <button
+                data-sanmou-button="secondary"
                 aria-label="編集画面を閉じる"
                 type="button"
                 onClick={closeEditor}

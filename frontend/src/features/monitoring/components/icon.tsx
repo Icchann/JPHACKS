@@ -2,6 +2,7 @@ import type { SVGProps } from "react";
 
 type IconName =
   | "alert"
+  | "warningSign"
   | "chevron"
   | "close"
   | "history"
@@ -10,6 +11,7 @@ type IconName =
   | "menu"
   | "moon"
   | "search"
+  | "radio"
   | "sensor"
   | "settings"
   | "slope"
@@ -23,6 +25,18 @@ type IconProps = SVGProps<SVGSVGElement> & {
 
 export function Icon({ name, ...props }: IconProps) {
   const paths: Record<IconName, React.ReactNode> = {
+    warningSign: (
+      <>
+        <path
+          d="M10.3 3.7a2 2 0 0 1 3.4 0l8 14a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3l8-14Z"
+          fill="#ffe36c"
+          stroke="#232820"
+          strokeWidth="1.9"
+        />
+        <path d="M12 8v6" stroke="#232820" strokeWidth="2.5" />
+        <circle cx="12" cy="17" r="1.1" fill="#232820" stroke="none" />
+      </>
+    ),
     alert: (
       <>
         <path d="M12 3 2.8 19a1.3 1.3 0 0 0 1.1 2h16.2a1.3 1.3 0 0 0 1.1-2L12 3Z" />
@@ -70,6 +84,14 @@ export function Icon({ name, ...props }: IconProps) {
       <>
         <rect x="7" y="7" width="10" height="10" rx="2" />
         <path d="M10 2v3M14 2v3M10 19v3M14 19v3M2 10h3M2 14h3M19 10h3M19 14h3" />
+      </>
+    ),
+    radio: (
+      <>
+        <circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" />
+        <path d="M9 9a4.25 4.25 0 0 0 0 6M15 9a4.25 4.25 0 0 1 0 6" />
+        <path d="M6.5 6.5a7.8 7.8 0 0 0 0 11M17.5 6.5a7.8 7.8 0 0 1 0 11" />
+        <path d="M4 4a11.3 11.3 0 0 0 0 16M20 4a11.3 11.3 0 0 1 0 16" />
       </>
     ),
     settings: (

@@ -612,3 +612,12 @@
     transition: none;
   }
 }
+/* 矢印を省いても操作名を中央で読み取れる余白を確保します。 */
+.detailLink {
+  justify-content: center;
+  padding: 8px 14px;
+}
+
+.detailLink:hover {
+  text-decoration: none;
+}

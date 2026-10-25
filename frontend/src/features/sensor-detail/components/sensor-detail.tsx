@@ -197,7 +197,11 @@ export function SensorDetail({
                 </time>
               )}
             </p>
-            <Link className={styles.backLink} href={returnPath}>
+            <Link
+              data-sanmou-button="secondary"
+              className={styles.backLink}
+              href={returnPath}
+            >
               <span aria-hidden="true">←</span>
               {returnPath === "/sensors" ? "センサー管理へ戻る" : "地図へ戻る"}
             </Link>
@@ -245,6 +249,7 @@ export function SensorDetail({
           <div className={styles.tabs} role="tablist" aria-label="センサー詳細">
             {TABS.map((tab, index) => (
               <button
+                data-sanmou-button="secondary"
                 aria-controls={"sensor-panel-" + tab.key}
                 aria-selected={activeTab === tab.key}
                 id={"sensor-tab-" + tab.key}

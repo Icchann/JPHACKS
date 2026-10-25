@@ -68,20 +68,20 @@
   text-decoration: none;
 }
 
+/* ロゴ画像の比率を保ち、従来の緑の囲みは重ねません。 */
 .brandMark {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--brand-700), transparent 62%);
-  border-radius: 8px;
-  color: #ffffff;
-  background: var(--brand-700);
 }
 
-.brandMark svg {
-  width: 20px;
-  height: 20px;
+.brandMark img {
+  display: block;
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
 }
 
 .brand > div,

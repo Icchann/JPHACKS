@@ -116,6 +116,7 @@ export function SensorDetailModal({
           </div>
 
           <button
+            data-sanmou-button="secondary"
             aria-label="詳細モーダルを閉じる"
             className={styles.closeBtn}
             onClick={onClose}
@@ -338,6 +339,7 @@ export function SensorDetailModal({
             <span aria-hidden="true">↗</span>
           </Link>
           <button
+            data-sanmou-button="secondary"
             className={styles.closeActionBtn}
             onClick={onClose}
             type="button"

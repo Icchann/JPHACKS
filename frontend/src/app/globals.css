@@ -1,7 +1,8 @@
 :root {
   color-scheme: light;
-  --brand-700: #247a58;
-  --brand-800: #1e5f45;
+  --brand-700: #236344;
+  --accent: var(--brand-700);
+  --brand-800: #174e36;
   --brand-100: #e8f5ee;
   --brand-50: #f5fbf7;
   --accent: var(--brand-700);
@@ -32,7 +33,7 @@
   --device: var(--offline);
   --info: #2c6cbf;
   --font-xs: 0.75rem;
-  --font-sm: 0.8125rem;
+  --font-sm: 0.875rem;
   --font-md: 0.875rem;
   --font-lg: 1rem;
   --font-xl: 1.25rem;
@@ -152,4 +153,105 @@ input[type="number"] {
   :root {
     --app-header-height: 112px;
   }
+}
+
+/* 操作だけを立体化し、地図ピンや状態バッジの意味は変更しません。 */
+:is(button, a)[data-sanmou-button] {
+  --button-base: #a1b39b;
+  text-decoration: none;
+  min-height: 40px;
+  font-size: var(--font-md);
+  line-height: 1.4;
+  border: 1px solid #6f8773;
+  border-radius: 7px;
+  background: #edf4e6;
+  color: #174e36;
+  box-shadow:
+    inset 0 2px 0 rgb(255 255 255 / 80%),
+    0 3px 0 var(--button-base),
+    0 5px 7px rgb(18 59 41 / 12%);
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color 120ms ease,
+    box-shadow 100ms ease,
+    translate 100ms ease;
+}
+
+:is(button, a)[data-sanmou-button="primary"],
+:is(button, a)[data-sanmou-button][aria-pressed="true"],
+button[data-sanmou-button][aria-selected="true"] {
+  --button-base: #123b29;
+  border-color: #174e36;
+  background: #236344;
+  color: #ffffff;
+  box-shadow:
+    inset 0 2px 0 rgb(255 255 255 / 28%),
+    0 3px 0 var(--button-base),
+    0 5px 7px rgb(18 59 41 / 12%);
+}
+
+:is(button, a)[data-sanmou-button="danger"] {
+  --button-base: #c78c85;
+  border-color: #b84c45;
+  background: #ffffff;
+  color: #a52e29;
+}
+
+:is(button, a)[data-sanmou-button]:not(:disabled):hover {
+  filter: brightness(0.96);
+}
+
+:is(button, a)[data-sanmou-button]:not(:disabled):active {
+  translate: 0 2px;
+  box-shadow:
+    inset 0 2px 3px rgb(0 0 0 / 12%),
+    0 1px 0 var(--button-base);
+}
+
+:is(button, a)[data-sanmou-button]:focus-visible {
+  outline: 3px solid #b47b11;
+  outline-offset: 4px;
+}
+
+:is(button, a)[data-sanmou-button]:disabled {
+  border-color: #cdd3ca;
+  background: #e8ebe7;
+  color: #747d73;
+  box-shadow: none;
+  opacity: 1;
+  cursor: not-allowed;
+  filter: none;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #236344;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(button, a)[data-sanmou-button] {
+    transition: none;
+  }
+}
+
+/* 地図上の一覧は情報を読む面なので、選択しても暗い塗りにしません。 */
+:is(button, a)[data-sanmou-button="row"],
+:is(button, a)[data-sanmou-button="row"][aria-pressed="true"] {
+  background: #f5f8f3;
+  color: var(--text);
+  box-shadow:
+    inset 0 2px 0 #ffffff,
+    0 2px 0 #a1b39b;
+}
+
+:is(button, a)[data-sanmou-button="row"][aria-pressed="true"] {
+  outline: 2px solid #236344;
+  outline-offset: 1px;
+}
+
+:is(button, a)[data-sanmou-button="row"]:hover {
+  background: #edf4e6;
+  color: var(--text);
 }

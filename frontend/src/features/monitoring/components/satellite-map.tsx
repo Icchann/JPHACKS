@@ -337,6 +337,7 @@ export function SatelliteMap({
           {visibleSensors.length > 0 ? (
             visibleSensors.map((sensor) => (
               <button
+                data-sanmou-button="row"
                 aria-pressed={selectedSensorId === sensor.id}
                 data-selected={selectedSensorId === sensor.id}
                 key={sensor.id}
