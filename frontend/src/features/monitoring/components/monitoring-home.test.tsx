@@ -150,4 +150,40 @@ describe("MonitoringHome", () => {
     expect(screen.queryByText("異常履歴")).not.toBeInTheDocument();
     expect(screen.queryByText("設定")).not.toBeInTheDocument();
   });
+
+  it("実機モード時は台帳APIから登録センサーを取得し、デモセンサーを表示しない", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/api/test-sensors")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "reg-1",
+                sensor_code: "T1",
+                name: "実機 登録木ノードT1",
+                latitude: 35.1234,
+                longitude: 137.5678,
+                observation_severity: "normal",
+                communication_status: "online",
+                device_fault_status: "ok",
+                low_battery: false,
+                last_received_at: "2026-10-25T09:00:00Z",
+                source: "device_test",
+              },
+            ],
+            next_cursor: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    render(<MonitoringHome dataMode="test" />);
+
+    expect(await screen.findByText("T1")).toBeInTheDocument();
+    expect(screen.queryByText("DEMO-001")).not.toBeInTheDocument();
+    expect(screen.queryByText("DEMO-005")).not.toBeInTheDocument();
+  });
 });

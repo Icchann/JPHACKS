@@ -20,7 +20,7 @@ export type DemoSensor = {
   tiltValue: number | null;
   batteryPercent: number | null;
   lastReceivedAt: string | null;
-  source: "demo";
+  source: "demo" | "device_test";
   // 林業現場でのリスク種別（倒木 vs 斜面崩壊）と設置位置の特定用メタデータ
   nodeType?: ForestNodeType;
   elevationMeters?: number;

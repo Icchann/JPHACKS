@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -29,6 +30,7 @@ import type {
   ObservationSeverity,
 } from "../types";
 import { useTestObservations } from "../../dashboard/use-test-observations";
+import type { TestSensorListResponse } from "../../sensor-management/sensor-api-types";
 import { useDemoMonitoring } from "../use-demo-monitoring";
 import { Icon } from "./icon";
 import { LayerController } from "./layer-controller";
@@ -39,17 +41,76 @@ import { SensorDetailModal } from "./sensor-detail-modal";
 import { WarningPanel } from "./warning-panel";
 const SUMMARY_ORDER: ObservationSeverity[] = ["normal", "caution", "danger"];
 
+type MonitoringHomeProps = {
+  initialMapEngine?: "offline_svg" | "satellite_google";
+  dataMode?: "demo" | "test";
+};
+
 export function MonitoringHome({
   initialMapEngine = "offline_svg",
-}: {
-  initialMapEngine?: "offline_svg" | "satellite_google";
-} = {}) {
+  dataMode = "demo",
+}: MonitoringHomeProps = {}) {
   const router = useRouter();
   const { snapshot, newAlerts, dismissNewAlerts } = useDemoMonitoring();
   const { data: testObservations } = useTestObservations();
   const isLiveTestMode = Boolean(
-    testObservations && testObservations.items.length > 0,
+    testObservations?.items && testObservations.items.length > 0,
   );
+  const [registeredSensors, setRegisteredSensors] = useState<DemoSensor[]>([]);
+
+  // 実機テストモード時（SANMOU_APP_ENV === "test"）は、SQLiteに登録された正規の台帳データを取得
+  useEffect(() => {
+    if (dataMode !== "test") return;
+
+    let isMounted = true;
+    async function loadTestSensors() {
+      try {
+        const response = await fetch("/api/test-sensors?limit=200", {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const result = (await response.json()) as TestSensorListResponse;
+        if (!isMounted) return;
+
+        const converted: DemoSensor[] = result.items.map((item) => ({
+          id: item.id,
+          sensorCode: item.sensor_code,
+          name: item.name,
+          latitude: item.latitude,
+          longitude: item.longitude,
+          observationSeverity: (item.observation_severity === "unknown"
+            ? "normal"
+            : item.observation_severity) as ObservationSeverity,
+          communicationStatus:
+            item.communication_status === "unknown"
+              ? "offline"
+              : item.communication_status,
+          deviceFaultStatus:
+            item.device_fault_status === "unknown"
+              ? "ok"
+              : item.device_fault_status,
+          lowBattery: Boolean(item.low_battery),
+          soilMoistureValue: null,
+          tiltValue: null,
+          batteryPercent: null,
+          lastReceivedAt: item.last_received_at,
+          source: "device_test",
+          nodeType: item.sensor_code.startsWith("T") ? "tree" : "slope",
+        }));
+        setRegisteredSensors(converted);
+      } catch {
+        // API未接続時は前回の状態を維持
+      }
+    }
+
+    void loadTestSensors();
+    const timerId = window.setInterval(loadTestSensors, 5000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(timerId);
+    };
+  }, [dataMode]);
+
   const [query, setQuery] = useState("");
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<MapFocusRequest | null>(
@@ -77,13 +138,44 @@ export function MonitoringHome({
       DEMO_MOUNTAINS[0],
     [selectedMountainId],
   );
+  // 実機モード時は台帳データのみを採用し、デモデータとの混在を完全排除
+  const baseSensors = useMemo(() => {
+    if (dataMode === "test") {
+      return registeredSensors;
+    }
+    return snapshot.sensors;
+  }, [dataMode, registeredSensors, snapshot.sensors]);
+
   const filteredSensors = useMemo(
-    () => filterSensors(snapshot.sensors, query),
-    [query, snapshot.sensors],
+    () => filterSensors(baseSensors, query),
+    [baseSensors, query],
   );
-  // 実機テストモード時（USBシリアル受信時）は、届いた生観測値を地図上のピンへ自動反映
+
+  // 実機パケットを受信しているが、台帳に未登録のノードIDを検出
+  const unregisteredNodeIds = useMemo(() => {
+    if (
+      dataMode !== "test" ||
+      !testObservations?.items ||
+      testObservations.items.length === 0
+    ) {
+      return [];
+    }
+    const registeredCodes = new Set(baseSensors.map((s) => s.sensorCode));
+    const allLiveNodeIds = new Set(
+      testObservations.items.map((item) => item.node_id),
+    );
+    return Array.from(allLiveNodeIds).filter(
+      (nodeId) => !registeredCodes.has(nodeId),
+    );
+  }, [dataMode, testObservations, baseSensors]);
+
+  // 実機テストモード時（USBシリアル受信時）は、届いた生観測値を台帳センサーへ正規照合（固定エイリアス廃止）
   const activeSensors = useMemo(() => {
-    if (!testObservations || testObservations.items.length === 0) {
+    if (
+      dataMode !== "test" ||
+      !testObservations?.items ||
+      testObservations.items.length === 0
+    ) {
       return filteredSensors;
     }
 
@@ -92,20 +184,9 @@ export function MonitoringHome({
       latestByNode[item.node_id] = item;
     }
 
-    const aliases: Record<string, string> = {
-      "DEMO-001": "S1",
-      "DEMO-002": "S2",
-      "DEMO-003": "T1",
-      "DEMO-004": "T2",
-    };
-
     return filteredSensors.map((sensor) => {
-      const aliasKey = aliases[sensor.sensorCode];
-      const live =
-        latestByNode[sensor.sensorCode] ??
-        (aliasKey ? latestByNode[aliasKey] : undefined) ??
-        latestByNode[sensor.id];
-
+      // 台帳の sensorCode とパケットの node_id を完全一致で正規照合
+      const live = latestByNode[sensor.sensorCode];
       if (!live) return sensor;
 
       const soilMoisture =
@@ -127,6 +208,7 @@ export function MonitoringHome({
               Math.max(Math.round(((live.battery_mv - 2800) / 800) * 100), 0),
               100,
             );
+
       let severity: ObservationSeverity = "normal";
       if ((soilMoisture !== null && soilMoisture >= 0.75) || tiltDeg >= 2.0) {
         severity = "danger";
@@ -139,7 +221,7 @@ export function MonitoringHome({
 
       return {
         ...sensor,
-        sensorCode: live.node_id,
+        source: "device_test" as const,
         observationSeverity: severity,
         soilMoistureValue: soilMoisture,
         tiltValue: tiltDeg,
@@ -148,7 +230,7 @@ export function MonitoringHome({
         communicationStatus: "online" as const,
       };
     });
-  }, [filteredSensors, testObservations]);
+  }, [dataMode, filteredSensors, testObservations]);
 
   const visibleSensorIds = useMemo(
     () => new Set(activeSensors.map((sensor) => sensor.id)),
@@ -253,12 +335,40 @@ export function MonitoringHome({
     >
       <AppSidebar
         activePath="/map"
-        demoDescription="架空データを表示中"
+        demoDescription={
+          dataMode === "test" ? "実機台帳DBと接続中" : "架空データを表示中"
+        }
+        environmentLabel={dataMode === "test" ? "実機 TEST" : "デモモード"}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen((v) => !v)}
       />
 
       <section className={styles.workspace}>
+        {unregisteredNodeIds.length > 0 && (
+          <aside className={styles.unregisteredBanner} role="alert">
+            <Icon name="alert" />
+            <span>
+              未登録の端末からデータを受信しています:{" "}
+              <strong>{unregisteredNodeIds.join(", ")}</strong>
+              （台帳未登録のため地図上に配置されていません。
+              <Link className={styles.registerLink} href="/sensors">
+                センサー管理台帳で登録してください ↗
+              </Link>
+              ）
+            </span>
+          </aside>
+        )}
+
+        {dataMode === "test" && baseSensors.length === 0 && (
+          <div className={styles.emptyRegistryNotice}>
+            <p>
+              台帳（SQLite）に登録されたセンサーがありません。
+              <Link href="/sensors">センサー管理画面（/sensors）</Link>
+              からセンサーを登録してください。
+            </p>
+          </div>
+        )}
+
         {/* 上部パンくずリスト & マップ制御バー */}
         <div className={styles.breadcrumbsBar}>
           <div className={styles.breadcrumbsLeft}>
