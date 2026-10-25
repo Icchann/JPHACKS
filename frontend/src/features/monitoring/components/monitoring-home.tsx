@@ -23,6 +23,7 @@ import {
   OBSERVATION_LABELS,
 } from "../monitoring-utils";
 import type {
+  CommunicationStatus,
   DemoSensor,
   LayerVisibility,
   MapLayerId,
@@ -209,15 +210,17 @@ export function MonitoringHome({
               100,
             );
 
-      let severity: ObservationSeverity = "normal";
-      if ((soilMoisture !== null && soilMoisture >= 0.75) || tiltDeg >= 2.0) {
-        severity = "danger";
-      } else if (
-        (soilMoisture !== null && soilMoisture >= 0.6) ||
-        tiltDeg >= 1.0
-      ) {
-        severity = "caution";
-      }
+      // 実測値は校正値・基準姿勢が未確定のため、危険判定を下さず未判定（normal）とする
+      const severity: ObservationSeverity = "normal";
+
+      // 最終受信からの経過時間で通信状態を判定（60秒以上経過で受信途絶）
+      const receivedEpoch = new Date(live.received_at).getTime();
+      const currentEpoch = new Date(testObservations.refreshed_at).getTime();
+      const isFresh =
+        !isNaN(receivedEpoch) &&
+        !isNaN(currentEpoch) &&
+        currentEpoch - receivedEpoch < 60_000;
+      const commStatus: CommunicationStatus = isFresh ? "online" : "offline";
 
       return {
         ...sensor,
@@ -227,7 +230,7 @@ export function MonitoringHome({
         tiltValue: tiltDeg,
         batteryPercent: batteryPct,
         lastReceivedAt: live.received_at,
-        communicationStatus: "online" as const,
+        communicationStatus: commStatus,
       };
     });
   }, [dataMode, filteredSensors, testObservations]);
@@ -439,8 +442,12 @@ export function MonitoringHome({
             </p>
             <div>
               <h1>センサー監視</h1>
-              {isLiveTestMode ? (
-                <span className={styles.liveBadge}>実機受信中 (TEST)</span>
+              {dataMode === "test" ? (
+                isLiveTestMode ? (
+                  <span className={styles.liveBadge}>実機受信中 (TEST)</span>
+                ) : (
+                  <span className={styles.waitingBadge}>実機待機中 (TEST)</span>
+                )
               ) : (
                 <span className={styles.demoBadge}>デモ</span>
               )}

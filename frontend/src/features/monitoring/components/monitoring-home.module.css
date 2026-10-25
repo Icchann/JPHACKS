@@ -169,6 +169,17 @@
   background: #10b981;
 }
 
+.waitingBadge {
+  padding: 4px 10px;
+  border: 1px solid #6b7280;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: var(--font-xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: #6b7280;
+}
+
 .unregisteredBanner {
   display: flex;
   align-items: center;

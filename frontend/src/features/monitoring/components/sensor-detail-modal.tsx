@@ -119,15 +119,24 @@ export function SensorDetailModal({ sensor, onClose }: SensorDetailModalProps) {
 
         <div className={styles.dialogBody}>
           {/* 林業アクションアラート帯 */}
-          {isDanger && (
-            <div className={styles.dangerAlertBanner}>
-              <strong>⚠️ 緊急避難・安全警戒勧告</strong>
+          {sensor.source === "device_test" ? (
+            <div className={styles.infoBanner}>
+              <strong>ℹ️ 実機観測モード（生データ表示中）</strong>
               <p>
-                {isTree
-                  ? "急激な傾斜変位を検知しました。立木の根返り・風倒木および架線過負荷の危険があります。直ちに作業員を退避させてください。"
-                  : "土壌水分飽和および傾斜変動を検知しました。斜面崩壊・土砂崩れの危険が高まっています。当該工区への立ち入りを直ちに禁止してください。"}
+                集約機から受信した最新観測値を表示しています。土壌水分・傾斜の危険判定および基準姿勢との差分評価は校正確定後に適用されます。
               </p>
             </div>
+          ) : (
+            isDanger && (
+              <div className={styles.dangerAlertBanner}>
+                <strong>⚠️ 緊急避難・安全警戒勧告</strong>
+                <p>
+                  {isTree
+                    ? "急激な傾斜変位を検知しました。立木の根返り・風倒木および架線過負荷の危険があります。直ちに作業員を退避させてください。"
+                    : "土壌水分飽和および傾斜変動を検知しました。斜面崩壊・土砂崩れの危険が高まっています。当該工区への立ち入りを直ちに禁止してください。"}
+                </p>
+              </div>
+            )
           )}
 
           {/* メトリクスサマリー */}
@@ -139,7 +148,11 @@ export function SensorDetailModal({ sensor, onClose }: SensorDetailModalProps) {
                   ? `${(sensor.soilMoistureValue * 100).toFixed(1)}%`
                   : "未取得"}
               </strong>
-              <span className={styles.metricSub}>しきい値: 75.0%</span>
+              <span className={styles.metricSub}>
+                {sensor.source === "device_test"
+                  ? "未校正（生値ベース）"
+                  : "しきい値: 75.0%"}
+              </span>
             </div>
 
             <div className={styles.metricCard}>
@@ -149,17 +162,25 @@ export function SensorDetailModal({ sensor, onClose }: SensorDetailModalProps) {
                   ? `+${sensor.tiltValue.toFixed(2)}°`
                   : "未取得"}
               </strong>
-              <span className={styles.metricSub}>しきい値: +2.00°</span>
+              <span className={styles.metricSub}>
+                {sensor.source === "device_test"
+                  ? "仮算出（基準姿勢未設定）"
+                  : "しきい値: +2.00°"}
+              </span>
             </div>
 
             <div className={styles.metricCard}>
-              <span className={styles.metricLabel}>電池電圧</span>
+              <span className={styles.metricLabel}>電池残量</span>
               <strong className={styles.metricValue}>
                 {sensor.batteryPercent !== null
                   ? `${sensor.batteryPercent}%`
                   : "未取得"}
               </strong>
-              <span className={styles.metricSub}>3.28V (リチウム電池)</span>
+              <span className={styles.metricSub}>
+                {sensor.source === "device_test"
+                  ? "実測電圧換算"
+                  : "3.28V (リチウム電池)"}
+              </span>
             </div>
 
             <div className={styles.metricCard}>
@@ -173,115 +194,110 @@ export function SensorDetailModal({ sensor, onClose }: SensorDetailModalProps) {
             </div>
           </div>
 
-          {/* 直近24時間の時系列推移ミニチャート */}
-          <div className={styles.chartsSection}>
-            <div className={styles.chartBlock}>
-              <h4 className={styles.chartTitle}>土壌水分推移 (直近24時間)</h4>
-              <svg className={styles.chartSvg} viewBox="0 0 300 120">
-                {/* 警戒しきい値線 (75%) */}
-                <line
-                  stroke="#ef4444"
-                  strokeDasharray="4 3"
-                  strokeWidth="1.2"
-                  x1="30"
-                  x2="280"
-                  y1="40"
-                  y2="40"
-                />
-                <text fill="#ef4444" fontSize="9" x="240" y="36">
-                  警戒 75%
-                </text>
-
-                {/* 折れ線 */}
-                <polyline
-                  fill="none"
-                  points={moisturePoints
-                    .map((p, idx) => `${40 + idx * 75},${100 - p.val * 80}`)
-                    .join(" ")}
-                  stroke="#3b82f6"
-                  strokeLinecap="round"
-                  strokeWidth="2.5"
-                />
-
-                {/* データポイント */}
-                {moisturePoints.map((p, idx) => (
-                  <circle
-                    key={p.time}
-                    cx={40 + idx * 75}
-                    cy={100 - p.val * 80}
-                    fill="#3b82f6"
-                    r="3.5"
-                  />
-                ))}
-
-                {/* X軸ラベル */}
-                <text fill="var(--text-subtle)" fontSize="9" x="30" y="114">
-                  00:00
-                </text>
-                <text fill="var(--text-subtle)" fontSize="9" x="180" y="114">
-                  12:00
-                </text>
-                <text fill="var(--text-subtle)" fontSize="9" x="255" y="114">
-                  現在
-                </text>
-              </svg>
+          {/* 観測推移チャート */}
+          {sensor.source === "device_test" ? (
+            <div className={styles.liveNoticeBlock}>
+              <h4 className={styles.chartTitle}>実機観測履歴</h4>
+              <p className={styles.liveNoticeText}>
+                実機観測値は現在リアルタイムに受信・蓄積中です。架空の過去データは生成せず、CSVおよびSQLiteへの記録に基づき表示されます。
+              </p>
             </div>
-
-            <div className={styles.chartBlock}>
-              <h4 className={styles.chartTitle}>傾斜角度変位 (直近24時間)</h4>
-              <svg className={styles.chartSvg} viewBox="0 0 300 120">
-                {/* 警戒しきい値線 (2.0°) */}
-                <line
-                  stroke="#ef4444"
-                  strokeDasharray="4 3"
-                  strokeWidth="1.2"
-                  x1="30"
-                  x2="280"
-                  y1="45"
-                  y2="45"
-                />
-                <text fill="#ef4444" fontSize="9" x="240" y="41">
-                  警戒 +2.0°
-                </text>
-
-                {/* 折れ線 */}
-                <polyline
-                  fill="none"
-                  points={tiltPoints
-                    .map(
-                      (p, idx) =>
-                        `${40 + idx * 75},${100 - Math.min(p.val * 25, 80)}`,
-                    )
-                    .join(" ")}
-                  stroke="#f59e0b"
-                  strokeLinecap="round"
-                  strokeWidth="2.5"
-                />
-
-                {/* データポイント */}
-                {tiltPoints.map((p, idx) => (
-                  <circle
-                    key={p.time}
-                    cx={40 + idx * 75}
-                    cy={100 - Math.min(p.val * 25, 80)}
-                    fill="#f59e0b"
-                    r="3.5"
+          ) : (
+            <div className={styles.chartsSection}>
+              <div className={styles.chartBlock}>
+                <h4 className={styles.chartTitle}>土壌水分推移 (直近24時間)</h4>
+                <svg className={styles.chartSvg} viewBox="0 0 300 120">
+                  <line
+                    stroke="#ef4444"
+                    strokeDasharray="4 3"
+                    strokeWidth="1.2"
+                    x1="30"
+                    x2="280"
+                    y1="40"
+                    y2="40"
                   />
-                ))}
+                  <text fill="#ef4444" fontSize="9" x="240" y="36">
+                    警戒 75%
+                  </text>
+                  <polyline
+                    fill="none"
+                    points={moisturePoints
+                      .map((p, idx) => `${40 + idx * 75},${100 - p.val * 80}`)
+                      .join(" ")}
+                    stroke="#3b82f6"
+                    strokeLinecap="round"
+                    strokeWidth="2.5"
+                  />
+                  {moisturePoints.map((p, idx) => (
+                    <circle
+                      key={p.time}
+                      cx={40 + idx * 75}
+                      cy={100 - p.val * 80}
+                      fill="#3b82f6"
+                      r="3.5"
+                    />
+                  ))}
+                  <text fill="var(--text-subtle)" fontSize="9" x="30" y="114">
+                    00:00
+                  </text>
+                  <text fill="var(--text-subtle)" fontSize="9" x="180" y="114">
+                    12:00
+                  </text>
+                  <text fill="var(--text-subtle)" fontSize="9" x="255" y="114">
+                    現在
+                  </text>
+                </svg>
+              </div>
 
-                {/* X軸ラベル */}
-                <text fill="var(--text-subtle)" fontSize="9" x="30" y="114">
-                  00:00
-                </text>
-                <text fill="var(--text-subtle)" fontSize="9" x="180" y="114">
-                  12:00
-                </text>
-                <text fill="var(--text-subtle)" fontSize="9" x="255" y="114">
-                  現在
-                </text>
-              </svg>
+              <div className={styles.chartBlock}>
+                <h4 className={styles.chartTitle}>傾斜角度変位 (直近24時間)</h4>
+                <svg className={styles.chartSvg} viewBox="0 0 300 120">
+                  <line
+                    stroke="#ef4444"
+                    strokeDasharray="4 3"
+                    strokeWidth="1.2"
+                    x1="30"
+                    x2="280"
+                    y1="45"
+                    y2="45"
+                  />
+                  <text fill="#ef4444" fontSize="9" x="240" y="41">
+                    警戒 +2.0°
+                  </text>
+                  <polyline
+                    fill="none"
+                    points={tiltPoints
+                      .map(
+                        (p, idx) =>
+                          `${40 + idx * 75},${100 - Math.min(p.val * 25, 80)}`,
+                      )
+                      .join(" ")}
+                    stroke="#f59e0b"
+                    strokeLinecap="round"
+                    strokeWidth="2.5"
+                  />
+                  {tiltPoints.map((p, idx) => (
+                    <circle
+                      key={p.time}
+                      cx={40 + idx * 75}
+                      cy={100 - Math.min(p.val * 25, 80)}
+                      fill="#f59e0b"
+                      r="3.5"
+                    />
+                  ))}
+                  <text fill="var(--text-subtle)" fontSize="9" x="30" y="114">
+                    00:00
+                  </text>
+                  <text fill="var(--text-subtle)" fontSize="9" x="180" y="114">
+                    12:00
+                  </text>
+                  <text fill="var(--text-subtle)" fontSize="9" x="255" y="114">
+                    現在
+                  </text>
+                </svg>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <footer className={styles.dialogFooter}>
