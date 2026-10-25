@@ -202,4 +202,31 @@ describe("MonitoringHome", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/NFCタグで開く場合/)).toBeInTheDocument();
   });
+
+  it("PC警報テスト発火ボタンを押すと画面上部に緊急警報バナーが出現し、解除できる (Issue #16)", () => {
+    render(<MonitoringHome dataMode="demo" />);
+
+    const triggerBtn = screen.getByRole("button", {
+      name: "⚠️ PC警報テスト発火（実演用）",
+    });
+    fireEvent.click(triggerBtn);
+
+    expect(
+      screen.getByText(
+        "【緊急警報】山林センサーの大きな姿勢変化を検知しました！",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("+24.5°")).toBeInTheDocument();
+
+    const dismissBtn = screen.getByRole("button", {
+      name: "警報を確認して解除",
+    });
+    fireEvent.click(dismissBtn);
+
+    expect(
+      screen.queryByText(
+        "【緊急警報】山林センサーの大きな姿勢変化を検知しました！",
+      ),
+    ).not.toBeInTheDocument();
+  });
 });

@@ -1,4 +1,4 @@
-import React, { useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 
 import type {
   DemoSensor,
@@ -52,6 +52,18 @@ export function OfflineMountainMap({
     x: 0,
     y: 0,
   });
+  // Windows等で地図エリアを画面いっぱいに広げる全体表示（拡大）ステート (Issue #12)
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isExpanded) {
+        setIsExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isExpanded]);
 
   // 地図のドラッグ＆ドロップによる自由なスクロール（パン移動）
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -180,7 +192,9 @@ export function OfflineMountainMap({
   };
 
   return (
-    <div className={`${styles.mapWrapper} ${className ?? ""}`.trim()}>
+    <div
+      className={`${styles.mapWrapper} ${className ?? ""} ${isExpanded ? styles.expandedFullscreen : ""}`.trim()}
+    >
       <header className={styles.mapToolbar}>
         <div className={styles.mapTitleBlock}>
           <span className={styles.areaIndicator}>🌲 森林基本図</span>
@@ -189,6 +203,31 @@ export function OfflineMountainMap({
         </div>
 
         <div className={styles.toolbarControls}>
+          {isExpanded ? (
+            <button
+              aria-label="地図の拡大表示を閉じる"
+              className={styles.closeFullscreenBtn}
+              onClick={() => setIsExpanded(false)}
+              title="通常表示に戻る (Esc)"
+              type="button"
+            >
+              ✕ 地図の拡大表示を閉じる (Esc)
+            </button>
+          ) : (
+            <button
+              aria-label="全体表示"
+              className={styles.expandButton}
+              onClick={() => {
+                setIsExpanded(true);
+                resetView();
+              }}
+              title="地図を画面いっぱいに広げて大きく表示"
+              type="button"
+            >
+              ⛶ 全体表示（大きく表示）
+            </button>
+          )}
+
           <div
             aria-label="ズーム調整"
             className={styles.zoomControls}
@@ -203,12 +242,13 @@ export function OfflineMountainMap({
               ＋ 拡大
             </button>
             <button
-              aria-label="リセット"
+              aria-label="位置リセット"
               className={styles.zoomButton}
               onClick={resetView}
+              title="位置と倍率を初期状態に戻す"
               type="button"
             >
-              全体表示
+              ⟲ 位置リセット
             </button>
             <button
               aria-label="縮小"
@@ -221,7 +261,6 @@ export function OfflineMountainMap({
           </div>
         </div>
       </header>
-
       <div
         className={`${styles.canvasContainer} ${isDragging ? styles.dragging : ""}`}
         onMouseDown={handleMouseDown}

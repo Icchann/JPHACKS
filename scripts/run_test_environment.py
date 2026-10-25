@@ -130,6 +130,12 @@ def main() -> int:
             "SANMOU_TEST_API_TOKEN": test_api_token,
         }
     )
+    current_pythonpath = environment.get("PYTHONPATH", "")
+    environment["PYTHONPATH"] = (
+        f"{BACKEND_ROOT}{os.pathsep}{current_pythonpath}"
+        if current_pythonpath
+        else str(BACKEND_ROOT)
+    )
 
     # API起動前に常に最新マイグレーションまで進め、手作業の初期化漏れを防ぎます。
     subprocess.run(
@@ -142,7 +148,7 @@ def main() -> int:
             "upgrade",
             "head",
         ],
-        cwd=PROJECT_ROOT,
+        cwd=BACKEND_ROOT,
         env=environment,
         check=True,
     )

@@ -15,6 +15,7 @@ type WarningPanelProps = {
   refreshedAt: string;
   selectedSensorId: string | null;
   onFocusSensor: (sensorId: string) => void;
+  onTriggerTestAlert?: () => void;
 };
 
 export function WarningPanel({
@@ -22,6 +23,7 @@ export function WarningPanel({
   refreshedAt,
   selectedSensorId,
   onFocusSensor,
+  onTriggerTestAlert,
 }: WarningPanelProps) {
   const sortedAlerts = sortAlerts(alerts);
 
@@ -37,6 +39,15 @@ export function WarningPanel({
         </div>
         <span className={styles.alertCount}>{alerts.length}</span>
       </header>
+      {onTriggerTestAlert && (
+        <button
+          type="button"
+          className={styles.triggerAlertDemoBtn}
+          onClick={onTriggerTestAlert}
+        >
+          ⚠️ PC警報テスト発火（実演用）
+        </button>
+      )}
 
       <div className={styles.warningList}>
         {sortedAlerts.length > 0 ? (

@@ -1,11 +1,18 @@
 import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
 
-from alembic import context
-from app import models  # noqa: F401
-from app.db.base import Base
+# 実行ディレクトリに関わらず、backendディレクトリを確実にsys.pathに追加
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from alembic import context  # noqa: E402
+from app import models  # noqa: E402, F401
+from app.db.base import Base  # noqa: E402
 
 config = context.config
 if config.config_file_name is not None:

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AppSidebar,
@@ -137,6 +137,58 @@ export function MonitoringHome({
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
   const [copied, setCopied] = useState(false);
+  // PC画面での緊急警報ステート & Web Audio音 (Issue #16)
+  const [manualEmergencyAlert, setManualEmergencyAlert] = useState<{
+    sensorId: string;
+    sensorName: string;
+    sensorCode: string;
+    tiltDeg: number;
+    reason: string;
+  } | null>(null);
+
+  const pcAudioContextRef = useRef<AudioContext | null>(null);
+  const pcAlarmIntervalRef = useRef<number | null>(null);
+
+  const startPcAlarm = useCallback(() => {
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        ("webkitAudioContext" in window
+          ? (window.webkitAudioContext as typeof AudioContext)
+          : undefined);
+      if (!AudioCtx) return;
+      if (!pcAudioContextRef.current) {
+        pcAudioContextRef.current = new AudioCtx();
+      }
+      const ctx = pcAudioContextRef.current;
+      if (ctx.state === "suspended") {
+        void ctx.resume();
+      }
+      clearInterval(pcAlarmIntervalRef.current ?? undefined);
+      const playBeep = () => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+      };
+      playBeep();
+      pcAlarmIntervalRef.current = window.setInterval(playBeep, 600);
+    } catch {
+      // Audio not permitted yet
+    }
+  }, []);
+
+  const stopPcAlarm = useCallback(() => {
+    clearInterval(pcAlarmIntervalRef.current ?? undefined);
+    pcAlarmIntervalRef.current = null;
+  }, []);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -421,6 +473,32 @@ export function MonitoringHome({
     const timeoutId = window.setTimeout(dismissNewAlerts, 6_000);
     return () => window.clearTimeout(timeoutId);
   }, [dismissNewAlerts, newAlerts.length]);
+  // 実機センサーまたは手動トリガーからの緊急警報検出 (Issue #16)
+  const activeEmergencyAlert = useMemo(() => {
+    if (manualEmergencyAlert) return manualEmergencyAlert;
+    const tilted = activeSensors.find(
+      (s) => s.tiltValue !== null && s.tiltValue >= 15.0,
+    );
+    if (tilted) {
+      return {
+        sensorId: tilted.id,
+        sensorName: tilted.name,
+        sensorCode: tilted.sensorCode,
+        tiltDeg: tilted.tiltValue ?? 15.0,
+        reason: "大きな姿勢変化（倒木・地滑りの危険）",
+      };
+    }
+    return null;
+  }, [manualEmergencyAlert, activeSensors]);
+
+  useEffect(() => {
+    if (activeEmergencyAlert) {
+      startPcAlarm();
+    } else {
+      stopPcAlarm();
+    }
+    return () => stopPcAlarm();
+  }, [activeEmergencyAlert, startPcAlarm, stopPcAlarm]);
 
   const openSensorDetails = useCallback(
     (sensor: DemoSensor) => {
@@ -503,6 +581,50 @@ export function MonitoringHome({
       />
 
       <section className={styles.workspace}>
+        {/* PC画面での緊急警報バナー (Issue #16) */}
+        {activeEmergencyAlert && (
+          <aside className={styles.pcEmergencyBanner} role="alert">
+            <div className={styles.pcEmergencyLeft}>
+              <span className={styles.pcEmergencyIcon} aria-hidden="true">
+                🚨
+              </span>
+              <div>
+                <strong className={styles.pcEmergencyTitle}>
+                  【緊急警報】山林センサーの大きな姿勢変化を検知しました！
+                </strong>
+                <p className={styles.pcEmergencyDesc}>
+                  対象機体:{" "}
+                  <strong>
+                    {activeEmergencyAlert.sensorName}（
+                    {activeEmergencyAlert.sensorCode}）
+                  </strong>{" "}
+                  | 傾斜変位:{" "}
+                  <strong>+{activeEmergencyAlert.tiltDeg.toFixed(1)}°</strong> |
+                  倒木・地滑りの恐れがあります。現場安全確認を発令してください。
+                </p>
+              </div>
+            </div>
+            <div className={styles.pcEmergencyActions}>
+              <button
+                type="button"
+                className={styles.pcEmergencyFocusBtn}
+                onClick={() => focusSensor(activeEmergencyAlert.sensorId)}
+              >
+                🎯 対象地点を表示
+              </button>
+              <button
+                type="button"
+                className={styles.pcEmergencyDismissBtn}
+                onClick={() => {
+                  setManualEmergencyAlert(null);
+                  stopPcAlarm();
+                }}
+              >
+                警報を確認して解除
+              </button>
+            </div>
+          </aside>
+        )}
         {isMobileDevice && (
           <aside className={styles.mobileWarningBanner} role="status">
             <span>
@@ -735,9 +857,19 @@ export function MonitoringHome({
       {isWarningPanelOpen && (
         <WarningPanel
           alerts={snapshot.alerts}
+          onFocusSensor={focusSensor}
+          onTriggerTestAlert={() => {
+            const target = activeSensors[0];
+            setManualEmergencyAlert({
+              sensorId: target?.id ?? "DEMO-001",
+              sensorName: target?.name ?? "樹木ノード T1（タニ装着）",
+              sensorCode: target?.sensorCode ?? "T1",
+              tiltDeg: 24.5,
+              reason: "大きな姿勢変化検知（実演ピッチ用）",
+            });
+          }}
           refreshedAt={snapshot.refreshedAt}
           selectedSensorId={selectedSensorId}
-          onFocusSensor={focusSensor}
         />
       )}
 

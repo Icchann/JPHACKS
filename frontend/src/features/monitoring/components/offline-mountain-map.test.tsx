@@ -73,8 +73,33 @@ describe("OfflineMountainMap", () => {
       fireEvent.mouseUp(canvas);
     }
 
-    const resetBtn = screen.getByRole("button", { name: "リセット" });
+    const resetBtn = screen.getByRole("button", { name: "位置リセット" });
     fireEvent.click(resetBtn);
     expect(resetBtn).toBeInTheDocument();
+  });
+
+  it("「全体表示」を押すと画面いっぱいに広がり、「地図の拡大表示を閉じる」で戻る (Issue #12)", () => {
+    render(
+      <OfflineMountainMap
+        layerStates={DEFAULT_LAYER_STATES}
+        onSelectSensor={vi.fn()}
+        sensors={DEMO_SENSORS}
+      />,
+    );
+
+    const expandBtn = screen.getByRole("button", { name: "全体表示" });
+    fireEvent.click(expandBtn);
+
+    // 閉じるボタンが出現すること
+    const closeBtn = screen.getByRole("button", {
+      name: "地図の拡大表示を閉じる",
+    });
+    expect(closeBtn).toBeInTheDocument();
+
+    // 閉じるボタンをクリックすると通常表示に戻ること
+    fireEvent.click(closeBtn);
+    expect(
+      screen.getByRole("button", { name: "全体表示" }),
+    ).toBeInTheDocument();
   });
 });
