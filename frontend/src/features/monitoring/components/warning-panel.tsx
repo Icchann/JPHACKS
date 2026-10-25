@@ -55,6 +55,7 @@ export function WarningPanel({
                   <HealthBadge
                     label={ALERT_LABELS[alert.severity]}
                     status="lowBattery"
+                    lampTone="silver"
                   />
                 ) : (
                   <StatusBadge

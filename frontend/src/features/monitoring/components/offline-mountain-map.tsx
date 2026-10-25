@@ -193,6 +193,7 @@ export function OfflineMountainMap({
             role="group"
           >
             <button
+              data-sanmou-button="secondary"
               aria-label="拡大"
               className={styles.zoomButton}
               onClick={() => setZoomLevel((z) => Math.min(z + 0.2, 2.0))}
@@ -201,6 +202,7 @@ export function OfflineMountainMap({
               ＋ 拡大
             </button>
             <button
+              data-sanmou-button="secondary"
               aria-label="リセット"
               className={styles.zoomButton}
               onClick={resetView}
@@ -209,6 +211,7 @@ export function OfflineMountainMap({
               全体表示
             </button>
             <button
+              data-sanmou-button="secondary"
               aria-label="縮小"
               className={styles.zoomButton}
               onClick={() => setZoomLevel((z) => Math.max(z - 0.2, 0.8))}

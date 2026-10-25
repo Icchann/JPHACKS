@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { Icon } from "../../features/monitoring/components/icon";
@@ -36,6 +37,7 @@ export function AppSidebar({
       <div className={styles.brandRow}>
         {onToggle && (
           <button
+            data-sanmou-button="secondary"
             aria-expanded={isOpen}
             aria-label={
               isOpen ? "ナビゲーションを折りたたむ" : "ナビゲーションを展開する"
@@ -53,7 +55,13 @@ export function AppSidebar({
           href="/map"
         >
           <span className={styles.brandMark}>
-            <Icon name="tree" />
+            <Image
+              src="/sanmou-logo.png"
+              alt=""
+              width={44}
+              height={44}
+              unoptimized
+            />
           </span>
           <div className={styles.brandText}>
             <strong>山網</strong>
@@ -99,6 +107,7 @@ export function SidebarToggleButton({
 }) {
   return (
     <button
+      data-sanmou-button="secondary"
       aria-expanded={isOpen}
       aria-label={isOpen ? "メニューを閉じる" : "メニューを開く"}
       className={`${styles.toggleButton} ${className ?? ""}`.trim()}

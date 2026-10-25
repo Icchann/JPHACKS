@@ -401,6 +401,7 @@ export function MonitoringHome({
             >
               {DEMO_MOUNTAINS.map((m) => (
                 <button
+                  data-sanmou-button="secondary"
                   aria-pressed={m.id === selectedMountainId}
                   className={`${styles.engineBtn} ${m.id === selectedMountainId ? styles.activeEngine : ""}`}
                   key={m.id}
@@ -422,6 +423,7 @@ export function MonitoringHome({
             />
 
             <button
+              data-sanmou-button="secondary"
               aria-label={
                 isWarningPanelOpen ? "警告パネルを閉じる" : "警告パネルを開く"
               }
@@ -470,6 +472,7 @@ export function MonitoringHome({
               />
               {query ? (
                 <button
+                  data-sanmou-button="secondary"
                   aria-label="検索をクリア"
                   type="button"
                   onClick={() => setQuery("")}
@@ -570,6 +573,7 @@ export function MonitoringHome({
             <span>{newAlerts.length}件の警告を受信しました</span>
           </div>
           <button
+            data-sanmou-button="secondary"
             aria-label="通知を閉じる"
             type="button"
             onClick={dismissNewAlerts}

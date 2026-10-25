@@ -20,6 +20,7 @@ type StatusBadgeProps = {
 type HealthBadgeProps = {
   status: HealthStatus;
   label: string;
+  lampTone?: "silver";
 };
 
 type KpiTone = MainStatus | "brand" | "offline";
@@ -29,22 +30,6 @@ type KpiTileProps = {
   value: number | string | null;
   suffix?: string;
   tone?: KpiTone;
-};
-
-const STATUS_SYMBOLS: Record<MainStatus, string> = {
-  normal: "✓",
-  caution: "!",
-  danger: "!",
-  unknown: "?",
-};
-
-const HEALTH_SYMBOLS: Record<HealthStatus, string> = {
-  online: "●",
-  offline: "×",
-  ok: "✓",
-  fault: "!",
-  lowBattery: "!",
-  unknown: "?",
 };
 
 function classes(...values: Array<string | undefined>): string {
@@ -60,6 +45,7 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
+      data-sanmou-button={variant}
       className={classes(styles.button, styles[variant], className)}
       type={type}
       {...props}
@@ -71,16 +57,24 @@ export function Button({
 export function StatusBadge({ status, label }: StatusBadgeProps) {
   return (
     <span className={styles.badge} data-status={status}>
-      <span aria-hidden="true">{STATUS_SYMBOLS[status]}</span>
+      <span
+        className={styles.statusLamp}
+        data-lamp={status}
+        aria-hidden="true"
+      />
       {label}
     </span>
   );
 }
 
-export function HealthBadge({ status, label }: HealthBadgeProps) {
+export function HealthBadge({ status, label, lampTone }: HealthBadgeProps) {
   return (
     <span className={styles.healthBadge} data-status={status}>
-      <span aria-hidden="true">{HEALTH_SYMBOLS[status]}</span>
+      <span
+        className={styles.statusLamp}
+        data-lamp={lampTone ?? status}
+        aria-hidden="true"
+      />
       {label}
     </span>
   );
@@ -97,7 +91,14 @@ export function KpiTile({
 
   return (
     <article className={styles.kpiTile} data-tone={tone}>
-      <span>{label}</span>
+      <span className={styles.kpiLabel}>
+        <span
+          className={styles.statusLamp}
+          data-lamp={tone}
+          aria-hidden="true"
+        />
+        {label}
+      </span>
       <div>
         <strong>{isUnknown ? "—" : value}</strong>
         {suffix ? <small>{suffix}</small> : null}

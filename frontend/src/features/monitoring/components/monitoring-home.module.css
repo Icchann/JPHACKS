@@ -696,7 +696,9 @@
 }
 
 .warningCard:hover {
-  border-color: var(--border-strong);
+  border-color: #8ca18a;
+  background: #edf4e6;
+  color: var(--text);
 }
 
 .warningCard[data-selected="true"] {
@@ -900,4 +902,29 @@
   .fallbackSensorList button {
     transition: none;
   }
+}
+
+/* ボタンの影とフォーカス枠が親要素で切れない余白を確保します。 */
+.engineSwitcher {
+  gap: 6px;
+  padding: 5px 6px 8px;
+  overflow: visible;
+  flex-wrap: wrap;
+}
+
+/* 警告の色は左端とバッジに限定し、本文は常に読める配色を保ちます。 */
+.warningCard {
+  align-items: stretch;
+  min-height: 44px;
+  line-height: 1.6;
+}
+
+.warningCard[data-selected="true"]:hover {
+  background: #edf4e6;
+  color: var(--text);
+}
+
+.warningCard:focus-visible {
+  outline: 3px solid #b47b11;
+  outline-offset: 2px;
 }

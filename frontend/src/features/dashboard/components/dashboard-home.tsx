@@ -269,6 +269,7 @@ export function DashboardHome() {
               <div className={styles.periodControls} aria-label="表示期間">
                 {PERIOD_OPTIONS.map((option) => (
                   <button
+                    data-sanmou-button="secondary"
                     aria-pressed={period === option.key}
                     key={option.key}
                     type="button"

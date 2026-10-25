@@ -61,7 +61,11 @@ export function TestDashboardHome() {
                   : "受信待ち"}
               </small>
             </div>
-            <button type="button" onClick={() => void refresh()}>
+            <button
+              data-sanmou-button="secondary"
+              type="button"
+              onClick={() => void refresh()}
+            >
               更新
             </button>
           </div>

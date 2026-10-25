@@ -229,3 +229,59 @@
   background: var(--accent);
   color: #ffffff;
 }
+
+/* ボタンの影とフォーカス枠が親要素で切れない余白を確保します。 */
+.visibilityToggle {
+  gap: 6px;
+  padding: 5px 6px 8px;
+  overflow: visible;
+  flex-wrap: wrap;
+}
+
+/* 非選択の淡い背景でも、隣り合う操作の輪郭を識別できるようにします。 */
+.visibilityToggle .toggleOpt {
+  border: 1px solid #6f8773;
+}
+
+.visibilityToggle .toggleOpt:not(:last-child) {
+  border-right-color: #6f8773;
+}
+
+/* 三つの選択肢は等幅と濃い輪郭で、選択の位置を読み取りやすくします。 */
+.visibilityToggle {
+  gap: 8px;
+  background: #f5f8f3;
+}
+
+.visibilityToggle .toggleOpt {
+  min-width: 48px;
+  padding-inline: 8px;
+  font-size: 13px;
+}
+
+.layerDescription {
+  font-size: 12px;
+  color: #526153;
+}
+
+.panelSubtitle {
+  font-size: 12px;
+  color: #526153;
+}
+/* 狭い表示領域でも設定パネルが画面の外へはみ出さないようにします。 */
+@media (max-width: 600px) {
+  .panel {
+    position: fixed;
+    top: 30vh;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+    max-height: 65vh;
+  }
+
+  .layerRow {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
