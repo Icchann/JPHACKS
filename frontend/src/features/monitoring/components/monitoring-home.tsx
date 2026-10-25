@@ -437,9 +437,6 @@ export function MonitoringHome({
 
         <header className={styles.topbar}>
           <div className={styles.titleBlock}>
-            <p>
-              {currentMountain.name} / {currentMountain.areaName}
-            </p>
             <div>
               <h1>センサー監視</h1>
               {dataMode === "test" ? (

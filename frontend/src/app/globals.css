@@ -4,6 +4,8 @@
   --brand-800: #1e5f45;
   --brand-100: #e8f5ee;
   --brand-50: #f5fbf7;
+  --accent: var(--brand-700);
+  --accent-hover: var(--brand-800);
   --bg: #f8faf9;
   --background: var(--bg);
   --surface: #ffffff;
