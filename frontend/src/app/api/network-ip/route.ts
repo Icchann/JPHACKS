@@ -13,7 +13,6 @@ export function GET() {
     }
   }
 
-  // 優先順位: 192.168.x.x または 172.x.x.x (ローカルWi-Fi / テザリング)
   const preferredIp =
     addresses.find(
       (ip) =>
@@ -24,8 +23,12 @@ export function GET() {
     addresses[0] ??
     "127.0.0.1";
 
+  const rawHost = os.hostname();
+  const bonjourHost = rawHost.endsWith(".local") ? rawHost : `${rawHost}.local`;
+
   return NextResponse.json({
     ip: preferredIp,
+    hostname: bonjourHost,
     addresses,
   });
 }

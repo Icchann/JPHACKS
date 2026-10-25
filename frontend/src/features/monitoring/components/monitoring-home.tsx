@@ -202,20 +202,24 @@ export function MonitoringHome({
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // 実行環境のLAN IPアドレス自動取得（Venue Wi-Fi / テザリング）
+  // 実行環境の固定ホスト名（mDNS: Slack.local）およびLAN IP
   const [networkIp, setNetworkIp] = useState<string>("192.168.92.11");
+  const [bonjourHost, setBonjourHost] = useState<string>("Slack.local");
+  const [useBonjour, setUseBonjour] = useState<boolean>(true);
   const [customIp, setCustomIp] = useState<string>("");
 
   useEffect(() => {
     fetch("/api/network-ip")
       .then((res) => res.json())
-      .then((data: { ip?: string }) => {
+      .then((data: { ip?: string; hostname?: string }) => {
         if (data?.ip) setNetworkIp(data.ip);
+        if (data?.hostname) setBonjourHost(data.hostname);
       })
       .catch(() => {});
   }, []);
 
-  const effectiveHost = customIp.trim() || networkIp;
+  const effectiveHost =
+    customIp.trim() || (useBonjour ? bonjourHost : networkIp);
 
   const mobileUrl = useMemo(() => {
     if (typeof window === "undefined") {
@@ -1025,6 +1029,29 @@ export function MonitoringHome({
                   type="button"
                 >
                   {copied ? "コピー完了！" : "URLコピー"}
+                </button>
+              </div>
+
+              <div className={styles.hostModeSwitcher}>
+                <button
+                  type="button"
+                  className={`${styles.modeBtn} ${useBonjour && !customIp ? styles.activeModeBtn : ""}`}
+                  onClick={() => {
+                    setUseBonjour(true);
+                    setCustomIp("");
+                  }}
+                >
+                  🍏 固定ホスト名: {bonjourHost}（推奨・IP変更に影響なし）
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.modeBtn} ${!useBonjour && !customIp ? styles.activeModeBtn : ""}`}
+                  onClick={() => {
+                    setUseBonjour(false);
+                    setCustomIp("");
+                  }}
+                >
+                  🌐 IP直接指定: {networkIp}
                 </button>
               </div>
 
