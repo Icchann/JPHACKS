@@ -40,11 +40,10 @@ flowchart TD
         end
     end
 
-    subgraph NetworkSync[基地局・事務所 (ネット接続時に自動発火)]
+    subgraph NetworkSync[帰社後 / 会社WAN (接続時に自動同期)]
         FastAPIServer -.->|インターネット自動検知| AlertJob[緊急通知ワーカー]
         AlertJob -.->|外部送信| AdminEmail[全管理者宛 メール通知]
-        AlertJob -.->|将来拡張| WebPush[現場作業員 スマホPush通知]
-        PhoneWorker[現場スマホ<br/>※画面開発は一旦保留] -.->|Wi-Fi/LTE到達時に同期| FastAPIServer
+        PhoneWorker[現場スマホ (Flutter)<br/>NFC機体ID + GPS座標<br/>+ 設置日時 (時計不在を補完)<br/>+ 圏外保存] -.->|会社WAN/Wi-Fi接続時に自動同期| FastAPIServer
     end
 ```
 
@@ -74,6 +73,15 @@ flowchart TD
   - Google Maps衛星写真のクライアント描画と、APIキー未設定時・オフライン時のフォールバックUI提供。
   - WAI-ARIA準拠のアクセシビリティ対応コンポーネント。
 
+
+### 2.4 現場スマホアプリ（Flutter）
+- **責務**:
+  - **NFCタッチ機体識別**: センサー筐体のNFCタグから機体ID（`T1`, `S1`等）をワンタップ取得。
+  - **GPS座標 ＆ 設置日時の自動付与（重要）**:
+    - **ハードウェア制約の解決**: センサーノード内には時計（RTC）が搭載されていないため、起動経過時間（`sample_ms`）しか保持できない。そのため、**スマホ内蔵の高精度時計から正確な設置日時（`installed_at`）を取得し、GPS座標および機体IDと強固に紐付けて記録**する。
+  - **圏外ローカル蓄積（Store-and-Forward）**: 電波ゼロの山奥でも端末内メモリに安全に一時保存（アプリ終了時も保持）。
+  - **会社WAN / 事務所Wi-Fi接続時の自動同期**: 帰社後、PCのFastAPI（`/api/sensors/sync`）へ一括送信し、PC側SQLite台帳へ反映。
+  - **近接SOSビーコン**: 危機的状況（滑落・怪我など）発生時、近接無線（BLE）で周囲の仲間のスマホへ緊急要請を発信。
 ---
 
 ## 3. なぜこの技術スタックなのか（適材適所の選定理由）
