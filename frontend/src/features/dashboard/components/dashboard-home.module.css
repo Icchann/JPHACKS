@@ -242,7 +242,8 @@
 }
 
 /* 集計欄のランプは光源の質感だけを付け、点滅はさせません。 */
-.metricDot {
+.metricDot,
+.deviceRows i {
   --lamp-color: #378351;
   width: 12px;
   height: 12px;
@@ -342,20 +343,17 @@
   font-size: 12px;
 }
 
-.deviceRows i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--normal);
+/* 機器の集計も同じ電球表現にし、文字ラベルで状態を区別します。 */
+.deviceRows i[data-status="offline"] {
+  --lamp-color: #929fa9;
 }
 
-.deviceRows i[data-status="offline"],
 .deviceRows i[data-status="fault"] {
-  background: var(--device);
+  --lamp-color: #d94336;
 }
 
 .deviceRows i[data-status="battery"] {
-  background: var(--caution);
+  --lamp-color: #e3a008;
 }
 
 .deviceRows strong {

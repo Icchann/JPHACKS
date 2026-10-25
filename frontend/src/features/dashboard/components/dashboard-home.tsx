@@ -211,7 +211,7 @@ export function DashboardHome() {
 
             <article className={styles.deviceCard}>
               <div className={styles.deviceHeading}>
-                <Icon name="sensor" />
+                <Icon name="radio" />
                 <div>
                   <span>通信状態</span>
                   <strong>
@@ -233,7 +233,7 @@ export function DashboardHome() {
 
             <article className={styles.deviceCard}>
               <div className={styles.deviceHeading}>
-                <Icon name="alert" />
+                <Icon name="warningSign" />
                 <div>
                   <span>機器状態</span>
                   <strong>
