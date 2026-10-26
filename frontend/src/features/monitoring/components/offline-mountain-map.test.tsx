@@ -42,7 +42,7 @@ describe("OfflineMountainMap", () => {
     }
   });
 
-  it("ズームコントロールで拡大縮小ができる", () => {
+  it("最初から画面解像度に合わせて地図全体が1枚表示され、独自ズーム・パンはブラウザ標準機能へ委譲されている", () => {
     render(
       <OfflineMountainMap
         layerStates={DEFAULT_LAYER_STATES}
@@ -51,33 +51,13 @@ describe("OfflineMountainMap", () => {
       />,
     );
 
-    const zoomInBtn = screen.getByRole("button", { name: "拡大" });
-    fireEvent.click(zoomInBtn);
-    expect(zoomInBtn).toBeInTheDocument();
+    const svgMap = screen.getByLabelText(/山林観測地図/);
+    expect(svgMap).toHaveAttribute("preserveAspectRatio", "xMidYMid meet");
+    expect(svgMap).toHaveAttribute("viewBox", "0 0 1000 680");
+    expect(
+      screen.queryByRole("button", { name: "拡大" }),
+    ).not.toBeInTheDocument();
   });
-
-  it("ドラッグ操作および全体表示リセットができる", () => {
-    render(
-      <OfflineMountainMap
-        layerStates={DEFAULT_LAYER_STATES}
-        onSelectSensor={vi.fn()}
-        sensors={DEMO_SENSORS}
-      />,
-    );
-
-    const canvas = screen.getByLabelText(/山林観測地図/).parentElement;
-    expect(canvas).not.toBeNull();
-    if (canvas) {
-      fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
-      fireEvent.mouseMove(canvas, { clientX: 150, clientY: 180 });
-      fireEvent.mouseUp(canvas);
-    }
-
-    const resetBtn = screen.getByRole("button", { name: "位置リセット" });
-    fireEvent.click(resetBtn);
-    expect(resetBtn).toBeInTheDocument();
-  });
-
   it("「全体表示」を押すと画面いっぱいに広がり、「地図の拡大表示を閉じる」で戻る (Issue #12)", () => {
     render(
       <OfflineMountainMap
@@ -160,41 +140,7 @@ describe("OfflineMountainMap", () => {
     expect(screen.getByText("ESP32-NAGOYA")).toBeInTheDocument();
   });
 
-  it("通常表示時のホイール操作（ctrlKey: false）では地図のtransformが変化せず、ctrlKey: trueでのみズームされる", () => {
-    render(
-      <OfflineMountainMap
-        layerStates={DEFAULT_LAYER_STATES}
-        onSelectSensor={vi.fn()}
-        sensors={DEMO_SENSORS}
-      />,
-    );
-
-    const svgMap = screen.getByLabelText(/山林観測地図/);
-    const canvasContainer = svgMap.parentElement;
-    expect(canvasContainer).not.toBeNull();
-    if (!canvasContainer) return;
-
-    const initialStyleTransform = svgMap.style.transform;
-    expect(initialStyleTransform).toBe("translate(0px, 0px) scale(1)");
-
-    // 通常のホイールスクロール（ctrlKey: false）では地図が動かないこと
-    fireEvent.wheel(canvasContainer, {
-      deltaX: 30,
-      deltaY: 120,
-      ctrlKey: false,
-    });
-    expect(svgMap.style.transform).toBe(initialStyleTransform);
-
-    // Ctrl + ホイール操作（ctrlKey: true）ではズーム倍率が更新されること
-    fireEvent.wheel(canvasContainer, {
-      deltaY: -100,
-      ctrlKey: true,
-    });
-    expect(svgMap.style.transform).not.toBe(initialStyleTransform);
-    expect(svgMap.style.transform).toContain("scale(1.1)");
-  });
-
-  it("凡例がSVGの外（aria-label='森林基本図の凡例'）に表示されている", () => {
+  it("凡例がSVGの外（aria-label='森林基本図の凡例'）に表示され、全体表示の案内がある", () => {
     render(
       <OfflineMountainMap
         layerStates={DEFAULT_LAYER_STATES}
@@ -213,8 +159,6 @@ describe("OfflineMountainMap", () => {
     expect(externalLegend).toHaveTextContent("沢・水系");
     expect(externalLegend).toHaveTextContent("林道・作業道");
     expect(externalLegend).toHaveTextContent("🌲 樹木 / ⛰️ 斜面");
-    expect(externalLegend).toHaveTextContent(
-      "ドラッグで移動 / Ctrl(⌘)+ホイールで拡大縮小",
-    );
+    expect(externalLegend).toHaveTextContent("画面解像度に合わせて全体表示中");
   });
 });

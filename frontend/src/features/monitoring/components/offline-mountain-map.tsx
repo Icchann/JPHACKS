@@ -1,11 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 
 import type {
   DemoSensor,
@@ -56,17 +49,19 @@ const SVG_WIDTH = 1000;
 const SVG_HEIGHT = 680;
 const PADDING = 80;
 
-// 拡大・縮小倍率およびホイール操作のしきい値定数
-const DEFAULT_ZOOM_LEVEL = 1.0;
-const FOCUS_ZOOM_LEVEL = 1.35;
-const MIN_WHEEL_ZOOM_LEVEL = 0.7;
-const MAX_WHEEL_ZOOM_LEVEL = 2.5;
-const MIN_BUTTON_ZOOM_LEVEL = 0.8;
-const MAX_BUTTON_ZOOM_LEVEL = 2.0;
-const BUTTON_ZOOM_STEP = 0.2;
-const WHEEL_ZOOM_IN_FACTOR = 1.1;
-const WHEEL_ZOOM_OUT_FACTOR = 0.9;
-
+/*
+ * 将来のスタンドアロンアプリ化（DEC-13）時に使用する独自拡大・縮小およびホイール操作定数
+ * （Web版ではブラウザ標準ズームに委譲し、最初から画面解像度に合わせて地図全体を1枚表示するためコメントアウトで保持: GEMINI.md Rule 11）
+ * const DEFAULT_ZOOM_LEVEL = 1.0;
+ * const FOCUS_ZOOM_LEVEL = 1.35;
+ * const MIN_WHEEL_ZOOM_LEVEL = 0.7;
+ * const MAX_WHEEL_ZOOM_LEVEL = 2.5;
+ * const MIN_BUTTON_ZOOM_LEVEL = 0.8;
+ * const MAX_BUTTON_ZOOM_LEVEL = 2.0;
+ * const BUTTON_ZOOM_STEP = 0.2;
+ * const WHEEL_ZOOM_IN_FACTOR = 1.1;
+ * const WHEEL_ZOOM_OUT_FACTOR = 0.9;
+ */
 // レイヤーの不透明度および背景画像の調整定数
 const LAYER_OPACITY_VISIBLE = 1.0;
 const LAYER_OPACITY_FADED = 0.25;
@@ -127,8 +122,8 @@ export function OfflineMountainMap({
   mountainName = "白神山地 第3工区",
   mapImageUrl,
   mountainBounds,
-  resetViewRequest = 0,
-  focusRequest = null,
+  // resetViewRequest = 0,
+  // focusRequest = null,
   className,
 }: OfflineMountainMapProps) {
   const [hoveredSensor, setHoveredSensor] = useState<DemoSensor | null>(null);
@@ -136,32 +131,24 @@ export function OfflineMountainMap({
     x: number;
     y: number;
   } | null>(null);
-  const [zoomLevel, setZoomLevel] = useState<number>(DEFAULT_ZOOM_LEVEL);
-  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({
-    x: 0,
-    y: 0,
-  });
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({
-    x: 0,
-    y: 0,
-  });
   // Windows等で地図エリアを画面いっぱいに広げる全体表示（拡大）ステート (Issue #12)
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
-  // Reactの合成onWheelイベントはブラウザによってpassive扱いとなりpreventDefaultが効かない場合があるため、
-  // DOM要素への直接リスナー登録で確実にスクロール分離（Cooperative Gesture）を制御する
-  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
-  const handledResetViewRequestRef = useRef<number>(resetViewRequest);
-  const handledFocusTokenRef = useRef<number | null>(
-    focusRequest?.token ?? null,
-  );
-
-  const resetView = useCallback(() => {
-    setZoomLevel(DEFAULT_ZOOM_LEVEL);
-    setPanOffset({ x: 0, y: 0 });
-  }, []);
-
+  /*
+   * 将来のスタンドアロンアプリ化（DEC-13）時に使用する独自ズーム・パン状態管理
+   * （Web版ではスクロールを発生させず最初から全体を表示し、拡大縮小はブラウザ標準機能に委譲するためコメントアウトで保持: GEMINI.md Rule 11）
+   * const [zoomLevel, setZoomLevel] = useState<number>(DEFAULT_ZOOM_LEVEL);
+   * const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+   * const [isDragging, setIsDragging] = useState<boolean>(false);
+   * const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+   * const canvasContainerRef = useRef<HTMLDivElement | null>(null);
+   * const handledResetViewRequestRef = useRef<number>(resetViewRequest);
+   * const handledFocusTokenRef = useRef<number | null>(focusRequest?.token ?? null);
+   * const resetView = useCallback(() => {
+   *   setZoomLevel(DEFAULT_ZOOM_LEVEL);
+   *   setPanOffset({ x: 0, y: 0 });
+   * }, []);
+   */
   useEffect(() => {
     const handleKeyDown = (keyboardEvent: KeyboardEvent) => {
       if (keyboardEvent.key === "Escape" && isExpanded) {
@@ -172,115 +159,34 @@ export function OfflineMountainMap({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isExpanded]);
 
-  // ページ縦スクロール時にマウスが地図上を通過しても勝手にパン・ズームしないよう、
-  // 通常表示時は Ctrl/Meta + ホイールのみをズームとして受け付け、全体表示時は背景スクロールを遮断する
-  useEffect(() => {
-    const containerElement = canvasContainerRef.current;
-    if (!containerElement) {
-      return;
-    }
-
-    const handleNativeWheel = (wheelEvent: WheelEvent) => {
-      const isZoomGesture = wheelEvent.ctrlKey || wheelEvent.metaKey;
-
-      if (!isExpanded) {
-        if (!isZoomGesture) {
-          // 通常スクロール時は地図側で何もしないことで、ブラウザ標準のページ縦スクロールを妨げない
-          return;
-        }
-        wheelEvent.preventDefault();
-        wheelEvent.stopPropagation();
-        const zoomFactor =
-          wheelEvent.deltaY < 0 ? WHEEL_ZOOM_IN_FACTOR : WHEEL_ZOOM_OUT_FACTOR;
-        setZoomLevel((previousZoom) =>
-          Math.min(
-            Math.max(previousZoom * zoomFactor, MIN_WHEEL_ZOOM_LEVEL),
-            MAX_WHEEL_ZOOM_LEVEL,
-          ),
-        );
-        return;
-      }
-
-      // 全体表示中は背面のページスクロールを完全に遮断し、ホイール操作を地図操作に割り当てる
-      wheelEvent.preventDefault();
-      wheelEvent.stopPropagation();
-      if (isZoomGesture) {
-        const zoomFactor =
-          wheelEvent.deltaY < 0 ? WHEEL_ZOOM_IN_FACTOR : WHEEL_ZOOM_OUT_FACTOR;
-        setZoomLevel((previousZoom) =>
-          Math.min(
-            Math.max(previousZoom * zoomFactor, MIN_WHEEL_ZOOM_LEVEL),
-            MAX_WHEEL_ZOOM_LEVEL,
-          ),
-        );
-      } else {
-        setPanOffset((previousOffset) => ({
-          x: previousOffset.x - wheelEvent.deltaX,
-          y: previousOffset.y - wheelEvent.deltaY,
-        }));
-      }
-    };
-
-    containerElement.addEventListener("wheel", handleNativeWheel, {
-      passive: false,
-    });
-    return () => {
-      containerElement.removeEventListener("wheel", handleNativeWheel);
-    };
-  }, [isExpanded]);
-
-  // 地図のドラッグ＆ドロップによる自由なスクロール（パン移動）
-  const handleMouseDown = (mouseEvent: React.MouseEvent) => {
-    // センサーピンクリック時はドラッグ移動を開始しない
-    if (
-      (mouseEvent.target as HTMLElement).closest(`.${styles.sensorMarkerGroup}`)
-    ) {
-      return;
-    }
-    setIsDragging(true);
-    setDragStart({
-      x: mouseEvent.clientX - panOffset.x,
-      y: mouseEvent.clientY - panOffset.y,
-    });
-  };
-
-  const handleMouseMove = (mouseEvent: React.MouseEvent) => {
-    if (!isDragging) return;
-    setPanOffset({
-      x: mouseEvent.clientX - dragStart.x,
-      y: mouseEvent.clientY - dragStart.y,
-    });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // タッチ操作（タブレット・スマホ・タッチ対応PC）でのスクロール対応
-  const handleTouchStart = (touchEvent: React.TouchEvent) => {
-    const primaryTouch = touchEvent.touches[0];
-    if (touchEvent.touches.length === 1 && primaryTouch) {
-      setIsDragging(true);
-      setDragStart({
-        x: primaryTouch.clientX - panOffset.x,
-        y: primaryTouch.clientY - panOffset.y,
-      });
-    }
-  };
-
-  const handleTouchMove = (touchEvent: React.TouchEvent) => {
-    const primaryTouch = touchEvent.touches[0];
-    if (!isDragging || touchEvent.touches.length !== 1 || !primaryTouch) return;
-    setPanOffset({
-      x: primaryTouch.clientX - dragStart.x,
-      y: primaryTouch.clientY - dragStart.y,
-    });
-  };
-
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-  };
-
+  /*
+   * 将来のスタンドアロンアプリ化（DEC-13）時に有効化する独自ホイール拡大縮小・ドラッグパン移動ハンドラ（GEMINI.md Rule 11 に基づきコメントアウトで保持）
+   * useEffect(() => {
+   *   const containerElement = canvasContainerRef.current;
+   *   if (!containerElement) return;
+   *   const handleNativeWheel = (wheelEvent: WheelEvent) => {
+   *     const isZoomGesture = wheelEvent.ctrlKey || wheelEvent.metaKey;
+   *     if (!isExpanded && !isZoomGesture) return;
+   *     wheelEvent.preventDefault();
+   *     wheelEvent.stopPropagation();
+   *     if (isZoomGesture) {
+   *       const zoomFactor = wheelEvent.deltaY < 0 ? WHEEL_ZOOM_IN_FACTOR : WHEEL_ZOOM_OUT_FACTOR;
+   *       setZoomLevel((previousZoom) => Math.min(Math.max(previousZoom * zoomFactor, MIN_WHEEL_ZOOM_LEVEL), MAX_WHEEL_ZOOM_LEVEL));
+   *     } else {
+   *       setPanOffset((previousOffset) => ({ x: previousOffset.x - wheelEvent.deltaX, y: previousOffset.y - wheelEvent.deltaY }));
+   *     }
+   *   };
+   *   containerElement.addEventListener("wheel", handleNativeWheel, { passive: false });
+   *   return () => containerElement.removeEventListener("wheel", handleNativeWheel);
+   * }, [isExpanded]);
+   *
+   * const handleMouseDown = (mouseEvent: React.MouseEvent) => { ... };
+   * const handleMouseMove = (mouseEvent: React.MouseEvent) => { ... };
+   * const handleMouseUp = () => { setIsDragging(false); };
+   * const handleTouchStart = (touchEvent: React.TouchEvent) => { ... };
+   * const handleTouchMove = (touchEvent: React.TouchEvent) => { ... };
+   * const handleTouchEnd = () => { setIsDragging(false); };
+   */
   const uniqueId = useId();
 
   // 検索フィルタや遠方機体の追加で背景図や既存ピンが1ピクセルもズレないよう、
@@ -389,43 +295,14 @@ export function OfflineMountainMap({
     [positionedSensors],
   );
 
-  // 外部からの全体表示リセット要求（resetViewRequest）に応答して倍率とパン位置を初期化する
-  useEffect(() => {
-    if (
-      resetViewRequest === 0 ||
-      resetViewRequest === handledResetViewRequestRef.current
-    ) {
-      return;
-    }
-    handledResetViewRequestRef.current = resetViewRequest;
-    const timerId = window.setTimeout(() => {
-      resetView();
-    }, 0);
-    return () => window.clearTimeout(timerId);
-  }, [resetViewRequest, resetView]);
-
-  // 外部からのセンサーフォーカス要求（focusRequest）に応答して対象ピンが中央付近に来るよう移動する
-  useEffect(() => {
-    if (!focusRequest || focusRequest.token === handledFocusTokenRef.current) {
-      return;
-    }
-    const targetPositionedSensor = positionedSensors.find(
-      (item) => item.sensor.id === focusRequest.sensorId,
-    );
-    if (!targetPositionedSensor) {
-      return;
-    }
-    handledFocusTokenRef.current = focusRequest.token;
-    const timerId = window.setTimeout(() => {
-      setZoomLevel(FOCUS_ZOOM_LEVEL);
-      setPanOffset({
-        x: SVG_WIDTH / 2 - targetPositionedSensor.position.x,
-        y: SVG_HEIGHT / 2 - targetPositionedSensor.position.y,
-      });
-    }, 0);
-    return () => window.clearTimeout(timerId);
-  }, [focusRequest, positionedSensors]);
-
+  /*
+   * 将来のスタンドアロンアプリ化（DEC-13）時に使用する外部リセット・フォーカス連動（GEMINI.md Rule 11 に基づきコメントアウトで保持）
+   * useEffect(() => {
+   *   if (resetViewRequest === 0 || resetViewRequest === handledResetViewRequestRef.current) return;
+   *   handledResetViewRequestRef.current = resetViewRequest;
+   *   resetView();
+   * }, [resetViewRequest, resetView]);
+   */
   // レイヤー別の不透明度取得
   const getLayerOpacity = (layerId: MapLayerId): number => {
     const visibilityState = layerStates[layerId] ?? "visible";
@@ -462,7 +339,6 @@ export function OfflineMountainMap({
               className={styles.expandButton}
               onClick={() => {
                 setIsExpanded(true);
-                resetView();
               }}
               title="地図を画面いっぱいに広げて大きく表示"
               type="button"
@@ -471,6 +347,7 @@ export function OfflineMountainMap({
             </button>
           )}
 
+          {/* 将来のスタンドアロンアプリ化（DEC-13）時に有効化する独自ズーム調整ボタン群（Web版ではブラウザのズームに委譲するためコメントアウトで保持: GEMINI.md Rule 11）
           <div
             aria-label="ズーム調整"
             className={styles.zoomControls}
@@ -519,25 +396,14 @@ export function OfflineMountainMap({
               ー 縮小
             </button>
           </div>
+          */}
         </div>
       </header>
-      <div
-        ref={canvasContainerRef}
-        className={`${styles.canvasContainer} ${isDragging ? styles.dragging : ""}`}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
+      <div className={styles.canvasContainer}>
         <svg
           aria-label={`${mountainName}の山林観測地図`}
           className={styles.svgCanvas}
-          style={{
-            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
-          }}
+          preserveAspectRatio="xMidYMid meet"
           viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
         >
           <defs>
@@ -967,8 +833,8 @@ export function OfflineMountainMap({
             aria-label="センサー簡易情報"
             className={styles.hoverTooltip}
             style={{
-              left: `calc(${50 + ((hoverPosition.x - SVG_WIDTH / 2) / SVG_WIDTH) * 100 * zoomLevel}% + ${panOffset.x}px)`,
-              top: `calc(${50 + ((hoverPosition.y - SVG_HEIGHT / 2) / SVG_HEIGHT) * 100 * zoomLevel}% + ${panOffset.y}px)`,
+              left: `${(hoverPosition.x / SVG_WIDTH) * PERCENTAGE_MULTIPLIER}%`,
+              top: `${(hoverPosition.y / SVG_HEIGHT) * PERCENTAGE_MULTIPLIER}%`,
             }}
           >
             <header className={styles.tooltipHeader}>
@@ -1047,7 +913,7 @@ export function OfflineMountainMap({
           <span className={styles.legendBarItem}>🌲 樹木 / ⛰️ 斜面</span>
         </div>
         <span className={styles.gestureGuideText}>
-          ドラッグで移動 / Ctrl(⌘)+ホイールで拡大縮小
+          画面解像度に合わせて全体表示中（拡大縮小はブラウザ標準機能を使用）
         </span>
       </footer>
     </div>

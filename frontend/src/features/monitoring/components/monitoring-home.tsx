@@ -9,7 +9,6 @@ import {
   SidebarToggleButton,
 } from "../../../components/ui/app-sidebar";
 import { Breadcrumbs } from "../../../components/ui/breadcrumbs";
-import { Button, KpiTile } from "../../../components/ui/ui-primitives";
 import { QrCode } from "../../../components/ui/qr-code";
 import {
   DEFAULT_LAYER_STATES,
@@ -159,7 +158,7 @@ export function MonitoringHome({
   const [focusRequest, setFocusRequest] = useState<MapFocusRequest | null>(
     null,
   );
-  const [resetViewRequest, setResetViewRequest] = useState(0);
+  const [resetViewRequest /* , setResetViewRequest */] = useState(0);
 
   // 林業現場向け新機能: 開閉サイドバー、複数山選択、レイヤー制御、詳細モーダル
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1177,21 +1176,52 @@ export function MonitoringHome({
           </div>
         </div>
 
+        {/* 右側に警告パネルがあるため上部ヘッダーと状態集計を1行に凝縮し、地図の縦表示領域を最大化する */}
         <header className={styles.topbar}>
-          <div className={styles.titleBlock}>
-            <div>
-              <h1>センサー監視</h1>
-              {dataMode === "test" ? (
-                isLiveTestMode ? (
-                  <span className={styles.liveBadge}>実機受信中 (TEST)</span>
+          <div className={styles.topbarLeft}>
+            <div className={styles.titleBlock}>
+              <div>
+                <h1>センサー監視</h1>
+                {dataMode === "test" ? (
+                  isLiveTestMode ? (
+                    <span className={styles.liveBadge}>実機受信中 (TEST)</span>
+                  ) : (
+                    <span className={styles.waitingBadge}>
+                      実機待機中 (TEST)
+                    </span>
+                  )
                 ) : (
-                  <span className={styles.waitingBadge}>実機待機中 (TEST)</span>
-                )
-              ) : (
-                <span className={styles.demoBadge}>デモ</span>
-              )}
+                  <span className={styles.demoBadge}>デモ</span>
+                )}
+              </div>
             </div>
+
+            <section className={styles.summaryBar} aria-label="監視状態の集計">
+              <div className={styles.summaryPills}>
+                {SUMMARY_ORDER.map((severity) => (
+                  <div
+                    className={styles.summaryPill}
+                    data-tone={severity}
+                    key={severity}
+                  >
+                    <span
+                      className={styles.sensorDot}
+                      data-severity={severity}
+                      aria-hidden="true"
+                    />
+                    <span className={styles.summaryPillLabel}>
+                      {OBSERVATION_LABELS[severity]}
+                    </span>
+                    <strong className={styles.summaryPillValue}>
+                      {severityCounts[severity]}
+                    </strong>
+                    <span className={styles.summaryPillUnit}>台</span>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
+
           <div className={styles.headerActions}>
             <p className={styles.updatedAt}>
               <span>最終更新</span>
@@ -1223,21 +1253,6 @@ export function MonitoringHome({
             </label>
           </div>
         </header>
-
-        <section className={styles.summaryBar} aria-label="監視状態の集計">
-          <div className={styles.summaryCards}>
-            {SUMMARY_ORDER.map((severity) => (
-              <KpiTile
-                label={OBSERVATION_LABELS[severity]}
-                value={severityCounts[severity]}
-                suffix="台"
-                tone={severity}
-                key={severity}
-              />
-            ))}
-          </div>
-        </section>
-
         <section className={styles.mapSection}>
           <div className={styles.mapFrame}>
             {mapViewEngine === "offline_svg" ? (
@@ -1292,6 +1307,7 @@ export function MonitoringHome({
                   ? ` / ${baseSensors.length - filteredSensors.length}台を非表示`
                   : null}
               </span>
+              {/* 将来のスタンドアロンアプリ化（DEC-13）時に独自ズーム・パンを復帰させる際のリセット導線としてコメントアウト保持（GEMINI.md Rule 11）
               <Button
                 className={styles.resetMapButton}
                 variant="secondary"
@@ -1299,6 +1315,7 @@ export function MonitoringHome({
               >
                 全域表示
               </Button>
+              */}
             </div>
           </footer>
         </section>

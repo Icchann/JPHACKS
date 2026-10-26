@@ -131,9 +131,7 @@ describe("MonitoringHome", () => {
     });
 
     fireEvent.click(dangerAlert);
-    fireEvent.click(screen.getByRole("button", { name: "全域表示" }));
     act(() => vi.advanceTimersByTime(60_000));
-
     expect(dangerAlert).toHaveAttribute("aria-pressed", "true");
   });
 
