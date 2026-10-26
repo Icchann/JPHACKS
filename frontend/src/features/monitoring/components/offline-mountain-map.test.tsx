@@ -42,7 +42,7 @@ describe("OfflineMountainMap", () => {
     }
   });
 
-  it("最初から画面解像度に合わせて地図全体が1枚表示され、独自ズーム・パンはブラウザ標準機能へ委譲されている", () => {
+  it("PC操作に不慣れな方向けに拡大・縮小・リセットボタンが表示され、クリックでズーム倍率が更新される", () => {
     render(
       <OfflineMountainMap
         layerStates={DEFAULT_LAYER_STATES}
@@ -53,10 +53,19 @@ describe("OfflineMountainMap", () => {
 
     const svgMap = screen.getByLabelText(/山林観測地図/);
     expect(svgMap).toHaveAttribute("preserveAspectRatio", "xMidYMid meet");
-    expect(svgMap).toHaveAttribute("viewBox", "0 0 1000 680");
-    expect(
-      screen.queryByRole("button", { name: "拡大" }),
-    ).not.toBeInTheDocument();
+    expect(svgMap.style.transform).toBe("translate(0px, 0px) scale(1)");
+
+    const zoomInBtn = screen.getByRole("button", { name: "拡大" });
+    fireEvent.click(zoomInBtn);
+    expect(svgMap.style.transform).toContain("scale(1.2)");
+
+    const resetBtn = screen.getByRole("button", { name: "位置リセット" });
+    fireEvent.click(resetBtn);
+    expect(svgMap.style.transform).toBe("translate(0px, 0px) scale(1)");
+
+    const zoomOutBtn = screen.getByRole("button", { name: "縮小" });
+    fireEvent.click(zoomOutBtn);
+    expect(svgMap.style.transform).toContain("scale(0.8)");
   });
   it("「全体表示」を押すと画面いっぱいに広がり、「地図の拡大表示を閉じる」で戻る (Issue #12)", () => {
     render(
@@ -159,6 +168,8 @@ describe("OfflineMountainMap", () => {
     expect(externalLegend).toHaveTextContent("沢・水系");
     expect(externalLegend).toHaveTextContent("林道・作業道");
     expect(externalLegend).toHaveTextContent("🌲 樹木 / ⛰️ 斜面");
-    expect(externalLegend).toHaveTextContent("画面解像度に合わせて全体表示中");
+    expect(externalLegend).toHaveTextContent(
+      "拡大・縮小ボタン / マウスドラッグで地図を自由に移動できます",
+    );
   });
 });
