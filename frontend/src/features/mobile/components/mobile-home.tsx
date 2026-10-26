@@ -354,9 +354,8 @@ export function MobileHome({
   );
   const [capturedLat, setCapturedLat] = useState<string>(DEFAULT_VENUE_LAT);
   const [capturedLon, setCapturedLon] = useState<string>(DEFAULT_VENUE_LON);
-  const [capturedTime, setCapturedTime] = useState<string>(() =>
-    new Date().toLocaleString("ja-JP"),
-  );
+  // サーバー(Node.js)とスマホ端末のロケール・時刻差による Hydration Error を防ぐため、初期値は固定しマウント後にクライアント現在時刻をセットする
+  const [capturedTime, setCapturedTime] = useState<string>("");
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(
     DEFAULT_GPS_ACCURACY_METERS,
   );
@@ -374,17 +373,29 @@ export function MobileHome({
   );
   const [isScanningNfc, setIsScanningNfc] = useState(false);
   const [nfcUrlCopied, setNfcUrlCopied] = useState(false);
+  // SSR 時とクライアント localStorage の差分による DOM Mismatch を防ぐため、初期値は空配列としマウント後に読み込む
   const [pendingRegistrations, setPendingRegistrations] = useState<
     PendingRegistration[]
-  >(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem(PENDING_STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as PendingRegistration[]) : [];
-    } catch {
-      return [];
-    }
-  });
+  >([]);
+
+  useEffect(() => {
+    // クライアントマウント後に現在時刻と保存済みキューを非同期にロードし、Hydration Mismatch を防ぐ
+    const timerId = window.setTimeout(() => {
+      setCapturedTime((prev) => prev || new Date().toLocaleString("ja-JP"));
+      try {
+        const raw = window.localStorage.getItem(PENDING_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as PendingRegistration[];
+          if (Array.isArray(parsed)) {
+            setPendingRegistrations(parsed);
+          }
+        }
+      } catch {
+        // localStorage 読取失敗時は空キューを維持
+      }
+    }, 0);
+    return () => window.clearTimeout(timerId);
+  }, []);
   const [isSyncingPending, setIsSyncingPending] = useState(false);
 
   // 警報トリガー（傾き検知または手動テスト）
@@ -1264,7 +1275,9 @@ export function MobileHome({
                 </div>
                 <div className={styles.summaryRow}>
                   <span>設置時刻:</span>
-                  <strong>{capturedTime}</strong>
+                  <strong suppressHydrationWarning>
+                    {capturedTime || "現在時刻を取得中..."}
+                  </strong>
                 </div>
                 {gpsAccuracy !== null && (
                   <div className={styles.summaryRow}>
