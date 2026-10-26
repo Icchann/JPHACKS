@@ -12,6 +12,19 @@ import type {
 // 座標・名称・観測値はすべて開発用の架空データです。
 export const DEMO_MOUNTAINS: MountainArea[] = [
   {
+    id: "shirakami-03",
+    name: "白神山地",
+    areaName: "第3工区（北沢・東尾根）",
+    description:
+      "急傾斜地すべり危険箇所指定区域。主作業道および集材架線が稼働中。",
+    minLatitude: 34.985,
+    maxLatitude: 35.022,
+    minLongitude: 136.982,
+    maxLongitude: 137.032,
+    centerLatitude: 35.0005,
+    centerLongitude: 137.0045,
+  },
+  {
     id: "gozaisyo-01",
     name: "御在所岳",
     areaName: "本谷・一ノ谷工区（ロープウェイ周辺）",
@@ -26,19 +39,14 @@ export const DEMO_MOUNTAINS: MountainArea[] = [
     centerLongitude: 136.435,
   },
   {
-    id: "shirakami-03",
-    name: "白神山地",
-    areaName: "第3工区（北沢・東尾根）",
-    description:
-      "急傾斜地すべり危険箇所指定区域。主作業道および集材架線が稼働中。",
-    centerLatitude: 35.0005,
-    centerLongitude: 137.0045,
-  },
-  {
     id: "kiso-01",
     name: "木曽国有林",
     areaName: "第1保安工区",
     description: "ヒノキ人工林間伐現場。沢筋の土壌水分監視を重点実施中。",
+    minLatitude: 35.84,
+    maxLatitude: 35.87,
+    minLongitude: 137.6,
+    maxLongitude: 137.65,
     centerLatitude: 35.8512,
     centerLongitude: 137.6241,
   },

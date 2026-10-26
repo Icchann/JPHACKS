@@ -165,7 +165,7 @@ export function MonitoringHome({
   const [mountainsList, setMountainsList] =
     useState<MountainArea[]>(DEMO_MOUNTAINS);
   const [selectedMountainId, setSelectedMountainId] =
-    useState<string>("gozaisyo-01");
+    useState<string>("shirakami-03");
   const [isAddMountainOpen, setIsAddMountainOpen] = useState(false);
   const [newMountainName, setNewMountainName] = useState("");
   const [newAreaName, setNewAreaName] = useState("");
@@ -467,13 +467,24 @@ export function MonitoringHome({
           centerLongitude:
             (mountainItem.min_longitude + mountainItem.max_longitude) / 2,
         }));
-        setMountainsList(converted);
+        // DEMO_MOUNTAINSの定義を維持しつつ、DB登録の山林情報で更新・追加
+        setMountainsList(() => {
+          const mergedMap = new Map<string, MountainArea>();
+          for (const item of DEMO_MOUNTAINS) {
+            mergedMap.set(item.id, item);
+          }
+          for (const item of converted) {
+            mergedMap.set(item.id, item);
+          }
+          return Array.from(mergedMap.values());
+        });
         if (
           !converted.some(
             (mountainItem) => mountainItem.id === selectedMountainId,
-          )
+          ) &&
+          !DEMO_MOUNTAINS.some((m) => m.id === selectedMountainId)
         ) {
-          setSelectedMountainId(converted[0]?.id ?? "gozaisyo-01");
+          setSelectedMountainId(converted[0]?.id ?? "shirakami-03");
         }
       } catch {
         // API未接続時はDEMO_MOUNTAINSを維持

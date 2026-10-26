@@ -172,4 +172,85 @@ describe("OfflineMountainMap", () => {
       "拡大・縮小ボタン / マウスドラッグで地図を自由に移動できます",
     );
   });
+  it("多数の工区外センサーが存在してもスロット枠内に収まりSVG外にはみ出さない", () => {
+    // 12台の工区外（遠方）センサーを生成
+    const manyOffSiteSensors = Array.from({ length: 12 }, (_, index) => ({
+      ...DEMO_SENSORS[0]!,
+      id: `offsite-many-${index}`,
+      sensorCode: `EXT-${index + 1}`,
+      name: `遠方センサー ${index + 1}`,
+      latitude: 35.5 + index * 0.01,
+      longitude: 138.0 + index * 0.01,
+    }));
+
+    render(
+      <OfflineMountainMap
+        layerStates={DEFAULT_LAYER_STATES}
+        onSelectSensor={vi.fn()}
+        sensors={manyOffSiteSensors}
+      />,
+    );
+
+    expect(
+      screen.getByText("📍 工区外・現地仮設スロット（参考配置）"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/12台/)).toBeInTheDocument();
+
+    // 全工区外センサーのX座標が枠内（24〜976）に収まり、SVG幅1000を超えないことを検証
+    manyOffSiteSensors.forEach((sensor) => {
+      const markerGroup = screen.getByText(sensor.sensorCode).closest("g");
+      expect(markerGroup).toBeInTheDocument();
+      const transform = markerGroup?.getAttribute("transform") ?? "";
+      const match = /translate\(([\d.]+),\s*([\d.]+)\)/.exec(transform);
+      expect(match).not.toBeNull();
+      const x = Number(match![1]);
+      expect(x).toBeGreaterThanOrEqual(24);
+      expect(x).toBeLessThanOrEqual(976);
+    });
+  });
+
+  it("工区外のオーバーレイは描画されず、工区内のオーバーレイはlayerStatesに連動する", () => {
+    const inBoundPoint = {
+      id: "pt-in",
+      name: "工区内 湧水",
+      layerId: "rest_point" as const,
+      subType: "water" as const,
+      latitude: 35.001,
+      longitude: 137.005,
+      description: "工区内の水場",
+    };
+    const outBoundPoint = {
+      id: "pt-out",
+      name: "遠方 湧水",
+      layerId: "rest_point" as const,
+      subType: "water" as const,
+      latitude: 36.0,
+      longitude: 139.0,
+      description: "遠方の水場",
+    };
+
+    const { rerender } = render(
+      <OfflineMountainMap
+        layerStates={{ ...DEFAULT_LAYER_STATES, rest_point: "visible" }}
+        onSelectSensor={vi.fn()}
+        overlayPoints={[inBoundPoint, outBoundPoint]}
+        sensors={DEMO_SENSORS}
+      />,
+    );
+
+    // 工区内は表示され、工区外は除外されること
+    expect(screen.getByText("工区内 湧水")).toBeInTheDocument();
+    expect(screen.queryByText("遠方 湧水")).not.toBeInTheDocument();
+
+    // hidden に変更すると非表示になること
+    rerender(
+      <OfflineMountainMap
+        layerStates={{ ...DEFAULT_LAYER_STATES, rest_point: "hidden" }}
+        onSelectSensor={vi.fn()}
+        overlayPoints={[inBoundPoint, outBoundPoint]}
+        sensors={DEMO_SENSORS}
+      />,
+    );
+    expect(screen.queryByText("工区内 湧水")).not.toBeInTheDocument();
+  });
 });
