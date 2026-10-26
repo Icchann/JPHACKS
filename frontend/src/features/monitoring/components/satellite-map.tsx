@@ -8,10 +8,12 @@ import type { DemoSensor, ObservationSeverity } from "../types";
 import { Icon } from "./icon";
 import styles from "./monitoring-home.module.css";
 
+// 未判定センサーも正常色（緑）と誤認されないよう、中立的なスレートグレーを割り当てる
 const MARKER_COLORS: Record<ObservationSeverity, string> = {
   normal: "#2e8b57",
   caution: "#e6a61b",
   danger: "#d94b42",
+  unknown: "#64748b",
 };
 
 type SatelliteMapProps = {

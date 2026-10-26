@@ -1,8 +1,8 @@
-export type ObservationSeverity = "normal" | "caution" | "danger";
+export type ObservationSeverity = "normal" | "caution" | "danger" | "unknown";
 
-export type CommunicationStatus = "online" | "offline";
+export type CommunicationStatus = "online" | "offline" | "unknown";
 
-export type DeviceFaultStatus = "ok" | "fault";
+export type DeviceFaultStatus = "ok" | "fault" | "unknown";
 
 export type ForestNodeType = "tree" | "slope";
 
@@ -42,7 +42,7 @@ export type DemoAlert = {
   startedAt: string;
   measuredValue: number | null;
   unit: string | null;
-  source: "demo";
+  source: "demo" | "device_test";
 };
 
 export type MonitoringSnapshot = {
@@ -57,7 +57,7 @@ export type DemoObservation = {
   measuredAt: string;
   soilMoistureValue: number | null;
   tiltValue: number | null;
-  source: "demo";
+  source: "demo" | "device_test";
 };
 
 // 複数山林・工区の階層管理用モデル（GIS Ground Overlay対応）

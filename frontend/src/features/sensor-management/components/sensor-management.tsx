@@ -20,19 +20,24 @@ import {
 } from "../../../components/ui/ui-primitives";
 import { Icon } from "../../monitoring/components/icon";
 import { DEMO_SENSORS } from "../../monitoring/demo-data";
+import { evaluateLiveSensorState } from "../../monitoring/evaluate-live-sensor-state";
 import {
   formatJapanDateTime,
   OBSERVATION_LABELS,
 } from "../../monitoring/monitoring-utils";
 import type { TestObservationResponse } from "../../dashboard/test-observation-types";
-import type { DemoSensor, ObservationSeverity } from "../../monitoring/types";
+import type {
+  CommunicationStatus,
+  DemoSensor,
+  DeviceFaultStatus,
+  ObservationSeverity,
+} from "../../monitoring/types";
 import type { TestSensor, TestSensorListResponse } from "../sensor-api-types";
 import styles from "./sensor-management.module.css";
 
-type ManagedSeverity = ObservationSeverity | "unknown";
-type ManagedCommunicationStatus = DemoSensor["communicationStatus"] | "unknown";
-type ManagedDeviceFaultStatus = DemoSensor["deviceFaultStatus"] | "unknown";
-
+type ManagedSeverity = ObservationSeverity;
+type ManagedCommunicationStatus = CommunicationStatus;
+type ManagedDeviceFaultStatus = DeviceFaultStatus;
 type ManagedSensor = Omit<
   DemoSensor,
   | "observationSeverity"
@@ -62,10 +67,7 @@ type SensorFormErrors = Partial<Record<keyof SensorFormValues, string>>;
 type EditorState =
   { mode: "create"; sensorId: null } | { mode: "edit"; sensorId: string };
 
-const SEVERITY_LABELS: Record<ManagedSeverity, string> = {
-  ...OBSERVATION_LABELS,
-  unknown: "未判定",
-};
+const SEVERITY_LABELS: Record<ManagedSeverity, string> = OBSERVATION_LABELS;
 
 const COMMUNICATION_LABELS: Record<ManagedCommunicationStatus, string> = {
   online: "オンライン",
@@ -87,11 +89,15 @@ const EMPTY_FORM: SensorFormValues = {
   longitude: "",
 };
 
-const ONLINE_THRESHOLD_MS = 60_000;
-const BATTERY_MIN_MV = 2800;
-const BATTERY_SPAN_MV = 800;
 const SENSOR_PAGE_LIMIT = 200;
-
+const MIN_LATITUDE = -90;
+const MAX_LATITUDE = 90;
+const MIN_LONGITUDE = -180;
+const MAX_LONGITUDE = 180;
+const HTTP_NO_CONTENT = 204;
+const HTTP_CONFLICT = 409;
+const SENSOR_CODE_MAX_LENGTH = 80;
+const SENSOR_NAME_MAX_LENGTH = 120;
 function fromTestSensor(sensor: TestSensor): ManagedSensor {
   return {
     id: sensor.id,
@@ -140,7 +146,11 @@ function validateSensorForm(
 
   if (!values.latitude.trim()) {
     errors.latitude = "緯度を入力してください";
-  } else if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+  } else if (
+    !Number.isFinite(latitude) ||
+    latitude < MIN_LATITUDE ||
+    latitude > MAX_LATITUDE
+  ) {
     errors.latitude = "緯度は-90から90の範囲で入力してください";
   }
 
@@ -148,8 +158,8 @@ function validateSensorForm(
     errors.longitude = "経度を入力してください";
   } else if (
     !Number.isFinite(longitude) ||
-    longitude < -180 ||
-    longitude > 180
+    longitude < MIN_LONGITUDE ||
+    longitude > MAX_LONGITUDE
   ) {
     errors.longitude = "経度は-180から180の範囲で入力してください";
   }
@@ -207,6 +217,32 @@ export function SensorManagement({
 
         let managedList = allItems.map(fromTestSensor);
 
+        let baselinesByNode: Record<
+          string,
+          { ax: number; ay: number; az: number; setAt?: string }
+        > = {};
+        try {
+          const baselineResponse = await fetch("/api/test-baseline", {
+            cache: "no-store",
+          });
+          if (baselineResponse.ok) {
+            const baselineBody = (await baselineResponse.json()) as {
+              baselines?: Record<
+                string,
+                { ax: number; ay: number; az: number; setAt?: string }
+              >;
+            };
+            if (
+              baselineBody.baselines &&
+              typeof baselineBody.baselines === "object"
+            ) {
+              baselinesByNode = baselineBody.baselines;
+            }
+          }
+        } catch {
+          // 基準姿勢APIが一時的に取得不能でも、未設定（unknown）として安全に評価を継続する
+        }
+
         try {
           const obsResponse = await fetch("/api/test-observations", {
             cache: "no-store",
@@ -222,43 +258,23 @@ export function SensorManagement({
               latestByNode[item.node_id] = item;
             }
             const refreshedEpoch = Date.parse(obsBody.refreshed_at);
-            managedList = managedList.map((sensor) => {
-              const latest = latestByNode[sensor.sensorCode];
-              if (!latest) {
-                return sensor;
-              }
-              const receivedEpoch = Date.parse(latest.received_at);
-              const isFresh =
-                Number.isFinite(receivedEpoch) &&
-                Number.isFinite(refreshedEpoch) &&
-                refreshedEpoch - receivedEpoch < ONLINE_THRESHOLD_MS;
-              const batteryPercent =
-                latest.battery_mv === null || latest.battery_mv === -1
-                  ? null
-                  : Math.min(
-                      Math.max(
-                        Math.round(
-                          ((latest.battery_mv - BATTERY_MIN_MV) /
-                            BATTERY_SPAN_MV) *
-                            100,
-                        ),
-                        0,
-                      ),
-                      100,
-                    );
-              return {
-                ...sensor,
-                communicationStatus: isFresh ? "online" : "offline",
-                lastReceivedAt: latest.received_at,
-                batteryPercent,
-                observationSeverity: "normal",
-              };
-            });
+            const currentTimestampMs = Number.isFinite(refreshedEpoch)
+              ? refreshedEpoch
+              : Date.now();
+            // 地図・詳細画面と同一の評価関数を用い、基準未設定時に無条件で normal へ固定しない（Issue #28）
+            managedList = managedList.map((sensor) =>
+              evaluateLiveSensorState(
+                sensor,
+                latestByNode[sensor.sensorCode] ?? null,
+                baselinesByNode[sensor.sensorCode] ?? null,
+                currentTimestampMs,
+                false,
+              ),
+            );
           }
         } catch {
           // 観測CSVが未作成・取得不能でも台帳一覧の読み込み自体は継続します。
         }
-
         if (!cancelled) {
           setSensors(managedList);
         }
@@ -317,7 +333,7 @@ export function SensorManagement({
           `/api/test-sensors/${encodeURIComponent(sensor.id)}`,
           { method: "DELETE" },
         );
-        if (response.ok || response.status === 204) {
+        if (response.ok || response.status === HTTP_NO_CONTENT) {
           setSensors((current) =>
             current.filter((item) => item.id !== sensor.id),
           );
@@ -348,7 +364,7 @@ export function SensorManagement({
       const response = await fetch("/api/test-observations", {
         method: "DELETE",
       });
-      if (response.ok || response.status === 204) {
+      if (response.ok || response.status === HTTP_NO_CONTENT) {
         try {
           await fetch("/api/test-baseline", { method: "DELETE" });
         } catch {
@@ -504,7 +520,7 @@ export function SensorManagement({
           method: isEditing ? "PATCH" : "POST",
         });
         if (!response.ok) {
-          if (response.status === 409) {
+          if (response.status === HTTP_CONFLICT) {
             setFormErrors({
               sensorCode: "同じセンサーIDが登録されています",
             });
@@ -869,7 +885,7 @@ export function SensorManagement({
                   }
                   aria-invalid={Boolean(formErrors.sensorCode)}
                   disabled={editor.mode === "edit"}
-                  maxLength={80}
+                  maxLength={SENSOR_CODE_MAX_LENGTH}
                   placeholder="例: DEMO-007"
                   ref={sensorCodeInputRef}
                   value={formValues.sensorCode}
@@ -891,7 +907,7 @@ export function SensorManagement({
                     formErrors.name ? "sensor-name-error" : undefined
                   }
                   aria-invalid={Boolean(formErrors.name)}
-                  maxLength={120}
+                  maxLength={SENSOR_NAME_MAX_LENGTH}
                   placeholder="例: 北沢 下流"
                   ref={sensorNameInputRef}
                   value={formValues.name}

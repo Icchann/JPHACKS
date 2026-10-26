@@ -1,6 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MobileHome } from "./mobile-home";
 
 // Mock useTestObservations
@@ -30,6 +29,11 @@ vi.mock("../../dashboard/use-test-observations", () => ({
 }));
 
 describe("MobileHome", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
   it("renders normal monitoring tab and triggers emergency alarm on button click", () => {
     render(<MobileHome dataMode="test" initialNodeId="T1" />);
 
@@ -121,5 +125,68 @@ describe("MobileHome", () => {
     expect(screen.getByText(/🎯 基準姿勢確定済み/)).toBeInTheDocument();
     expect(screen.getByText(/ax=10, ay=20, az=980 mg/)).toBeInTheDocument();
     expect(screen.getByText(/\(基準差\)/)).toBeInTheDocument();
+  });
+
+  it("未受信の実機テストモード（S1）では架空の 3280 mV / 1420 ADC を表示せず、基準確定も拒否する (Issue #27)", async () => {
+    render(<MobileHome dataMode="test" initialNodeId="S1" />);
+
+    expect(screen.queryByText(/3280 mV/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1420 ADC/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("待機中")).toHaveLength(3);
+
+    const baselineBtn = screen.getByRole("button", {
+      name: /タニ直立時の姿勢を「基準姿勢」に確定/,
+    });
+    fireEvent.click(baselineBtn);
+
+    expect(
+      await screen.findByText(
+        /有効な実機観測データを受信していないため、基準姿勢を確定できません/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/PCへ同期しました/)).not.toBeInTheDocument();
+  });
+
+  it("基準姿勢の POST /api/test-baseline が失敗したときは同期成功と偽装せず通信エラーを表示する (Issue #27)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "sync failed" }), { status: 500 }),
+    );
+
+    render(<MobileHome dataMode="test" initialNodeId="T1" />);
+
+    const baselineBtn = screen.getByRole("button", {
+      name: /タニ直立時の姿勢を「基準姿勢」に確定/,
+    });
+    fireEvent.click(baselineBtn);
+
+    expect(
+      await screen.findByText(/PCへの基準同期に失敗しました（通信エラー）/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/PCへ同期しました/)).not.toBeInTheDocument();
+  });
+
+  it("圏外保存時に localStorage.setItem が例外を投げた場合は保存成功と表示せず警告を出す (Issue #30)", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network down"));
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
+
+    render(
+      <MobileHome dataMode="test" initialNodeId="T1" initialTab="register" />,
+    );
+
+    const submitBtn = screen.getByRole("button", {
+      name: "この位置・時刻で機体を固定登録",
+    });
+    fireEvent.click(submitBtn);
+
+    expect(
+      await screen.findByText(
+        /端末ストレージへの保存に失敗しました（容量不足またはブラウザ制限）/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/スマホ内に保存しました/),
+    ).not.toBeInTheDocument();
   });
 });

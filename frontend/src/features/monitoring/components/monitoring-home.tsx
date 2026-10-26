@@ -17,6 +17,7 @@ import {
   DEMO_OVERLAY_PATHS,
   DEMO_OVERLAY_POINTS,
 } from "../demo-data";
+import { evaluateLiveSensorState } from "../evaluate-live-sensor-state";
 import {
   countSeverities,
   filterSensors,
@@ -24,7 +25,6 @@ import {
   OBSERVATION_LABELS,
 } from "../monitoring-utils";
 import type {
-  CommunicationStatus,
   DemoAlert,
   DemoSensor,
   LayerVisibility,
@@ -34,7 +34,10 @@ import type {
   ObservationSeverity,
 } from "../types";
 import { useTestObservations } from "../../dashboard/use-test-observations";
-import type { TestSensorListResponse } from "../../sensor-management/sensor-api-types";
+import type {
+  TestSensor,
+  TestSensorListResponse,
+} from "../../sensor-management/sensor-api-types";
 import { useDemoMonitoring } from "../use-demo-monitoring";
 import { Icon } from "./icon";
 import { LayerController } from "./layer-controller";
@@ -44,6 +47,47 @@ import { type MapFocusRequest, SatelliteMap } from "./satellite-map";
 import { SensorDetailModal } from "./sensor-detail-modal";
 import { WarningPanel } from "./warning-panel";
 const SUMMARY_ORDER: ObservationSeverity[] = ["normal", "caution", "danger"];
+const SENSOR_POLL_INTERVAL_MS = 5_000;
+const STALE_CHECK_INTERVAL_MS = 5_000;
+const BASELINE_POLL_INTERVAL_MS = 1_500;
+const COPY_FEEDBACK_DURATION_MS = 2_000;
+const TOAST_DISMISS_DELAY_MS = 6_000;
+const MOBILE_BREAKPOINT_PX = 768;
+const DANGER_TILT_THRESHOLD_DEG = 15.0;
+const TEST_ALERT_DEMO_TILT_DEG = 24.5;
+const QR_CODE_SIZE_PX = 220;
+const HTTP_NO_CONTENT = 204;
+const DEFAULT_NEW_MOUNTAIN_MIN_LAT = 35.008;
+const DEFAULT_NEW_MOUNTAIN_MAX_LAT = 35.025;
+const DEFAULT_NEW_MOUNTAIN_MIN_LON = 136.415;
+const DEFAULT_NEW_MOUNTAIN_MAX_LON = 136.455;
+const BEEP_START_FREQ_HZ = 880;
+const BEEP_END_FREQ_HZ = 440;
+const BEEP_DURATION_SEC = 0.3;
+const BEEP_START_GAIN = 0.2;
+const BEEP_END_GAIN = 0.01;
+const BEEP_INTERVAL_MS = 600;
+
+// 台帳上の初期状態（unknown 等）を normal や ok へ偽装せずそのまま保持する（Issue #28）
+function convertTestSensorToDemo(item: TestSensor): DemoSensor {
+  return {
+    id: item.id,
+    sensorCode: item.sensor_code,
+    name: item.name,
+    latitude: item.latitude,
+    longitude: item.longitude,
+    observationSeverity: item.observation_severity,
+    communicationStatus: item.communication_status,
+    deviceFaultStatus: item.device_fault_status,
+    lowBattery: Boolean(item.low_battery),
+    soilMoistureValue: null,
+    tiltValue: null,
+    batteryPercent: null,
+    lastReceivedAt: item.last_received_at,
+    source: "device_test",
+    nodeType: item.sensor_code.startsWith("T") ? "tree" : "slope",
+  };
+}
 
 type MonitoringHomeProps = {
   initialMapEngine?: "offline_svg" | "satellite_google";
@@ -56,13 +100,27 @@ export function MonitoringHome({
 }: MonitoringHomeProps = {}) {
   const router = useRouter();
   const { snapshot, newAlerts, dismissNewAlerts } = useDemoMonitoring();
-  const { data: testObservations } = useTestObservations(dataMode === "test");
+  const { data: testObservations, error: testObsError } = useTestObservations(
+    dataMode === "test",
+  );
   const isLiveTestMode = Boolean(
-    testObservations?.items && testObservations.items.length > 0,
+    !testObsError &&
+    testObservations?.items &&
+    testObservations.items.length > 0,
   );
   const [registeredSensors, setRegisteredSensors] = useState<DemoSensor[]>([]);
+  const [currentTimestampMs, setCurrentTimestampMs] = useState<number>(() =>
+    Date.now(),
+  );
 
-  // 実機テストモード時（SANMOU_APP_ENV === "test"）は、SQLiteに登録された正規の台帳データを取得
+  // API停止後も経過時間を進め、60秒超過時にオンライン表示が凍結しないようにする（Issue #31）
+  useEffect(() => {
+    if (dataMode !== "test") return;
+    const timerId = window.setInterval(() => {
+      setCurrentTimestampMs(Date.now());
+    }, STALE_CHECK_INTERVAL_MS);
+    return () => window.clearInterval(timerId);
+  }, [dataMode]);
   useEffect(() => {
     if (dataMode !== "test") return;
 
@@ -76,31 +134,9 @@ export function MonitoringHome({
         const result = (await response.json()) as TestSensorListResponse;
         if (!isMounted) return;
 
-        const converted: DemoSensor[] = result.items.map((item) => ({
-          id: item.id,
-          sensorCode: item.sensor_code,
-          name: item.name,
-          latitude: item.latitude,
-          longitude: item.longitude,
-          observationSeverity: (item.observation_severity === "unknown"
-            ? "normal"
-            : item.observation_severity) as ObservationSeverity,
-          communicationStatus:
-            item.communication_status === "unknown"
-              ? "offline"
-              : item.communication_status,
-          deviceFaultStatus:
-            item.device_fault_status === "unknown"
-              ? "ok"
-              : item.device_fault_status,
-          lowBattery: Boolean(item.low_battery),
-          soilMoistureValue: null,
-          tiltValue: null,
-          batteryPercent: null,
-          lastReceivedAt: item.last_received_at,
-          source: "device_test",
-          nodeType: item.sensor_code.startsWith("T") ? "tree" : "slope",
-        }));
+        const converted: DemoSensor[] = result.items.map(
+          convertTestSensorToDemo,
+        );
         setRegisteredSensors(converted);
       } catch {
         // API未接続時は前回の状態を維持
@@ -108,7 +144,10 @@ export function MonitoringHome({
     }
 
     void loadTestSensors();
-    const timerId = window.setInterval(loadTestSensors, 5000);
+    const timerId = window.setInterval(
+      loadTestSensors,
+      SENSOR_POLL_INTERVAL_MS,
+    );
     return () => {
       isMounted = false;
       window.clearInterval(timerId);
@@ -179,22 +218,34 @@ export function MonitoringHome({
       }
       clearInterval(pcAlarmIntervalRef.current ?? undefined);
       const playBeep = () => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
-        gain.gain.setValueAtTime(0.2, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.3);
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        oscillator.type = "sawtooth";
+        oscillator.frequency.setValueAtTime(
+          BEEP_START_FREQ_HZ,
+          ctx.currentTime,
+        );
+        oscillator.frequency.exponentialRampToValueAtTime(
+          BEEP_END_FREQ_HZ,
+          ctx.currentTime + BEEP_DURATION_SEC,
+        );
+        gainNode.gain.setValueAtTime(BEEP_START_GAIN, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(
+          BEEP_END_GAIN,
+          ctx.currentTime + BEEP_DURATION_SEC,
+        );
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + BEEP_DURATION_SEC);
       };
       playBeep();
-      pcAlarmIntervalRef.current = window.setInterval(playBeep, 600);
+      pcAlarmIntervalRef.current = window.setInterval(
+        playBeep,
+        BEEP_INTERVAL_MS,
+      );
     } catch {
-      // Audio not permitted yet
+      // ブラウザの自動再生ポリシーにより音声再生がブロックされた場合は画面表示のみで警報を継続する
     }
   }, []);
 
@@ -206,7 +257,7 @@ export function MonitoringHome({
   useEffect(() => {
     const checkMobile = () => {
       const isMobile =
-        window.innerWidth < 768 ||
+        window.innerWidth < MOBILE_BREAKPOINT_PX ||
         /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
       setIsMobileDevice(isMobile);
     };
@@ -229,9 +280,10 @@ export function MonitoringHome({
         if (data?.ip) setNetworkIp(data.ip);
         if (data?.hostname) setBonjourHost(data.hostname);
       })
-      .catch(() => {});
+      .catch(() => {
+        // LAN IP自動取得に失敗した場合は初期ホスト名（Slack.local）へフォールバックする
+      });
   }, []);
-
   const effectiveHost =
     customIp.trim() || (useBonjour ? bonjourHost : networkIp);
 
@@ -261,7 +313,7 @@ export function MonitoringHome({
   const copyMobileUrl = () => {
     void navigator.clipboard.writeText(mobileUrl);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
   };
   const [baselines, setBaselines] = useState<
     Record<string, { ax: number; ay: number; az: number; setAt: string }>
@@ -278,6 +330,15 @@ export function MonitoringHome({
             string,
             { ax: number; ay: number; az: number; setAt: string }
           >;
+          activeAlerts?: Record<
+            string,
+            {
+              sensorCode: string;
+              sensorName: string;
+              tiltDeg: number;
+              reason: string;
+            }
+          >;
           activeAlert?: {
             sensorCode: string;
             sensorName: string;
@@ -288,15 +349,24 @@ export function MonitoringHome({
         if (mounted && data?.baselines) {
           setBaselines(data.baselines);
         }
-        if (mounted && data?.activeAlert === null && manualEmergencyAlert) {
-          setManualEmergencyAlert(null);
+        // 他機体の基準操作で別機体の警報が誤って消えないよう、機体別辞書 activeAlerts で当該機体の警報有無を確認する（Issue #29）
+        if (mounted && manualEmergencyAlert) {
+          const isCurrentManualAlertStillActive = data?.activeAlerts
+            ? Boolean(data.activeAlerts[manualEmergencyAlert.sensorCode])
+            : data?.activeAlert !== null &&
+              (data?.activeAlert === undefined ||
+                data.activeAlert.sensorCode ===
+                  manualEmergencyAlert.sensorCode);
+          if (!isCurrentManualAlertStillActive) {
+            setManualEmergencyAlert(null);
+          }
         }
       } catch {
-        // ignore network error
+        // 一時的な通信失敗時は直前の基準・警報状態を保持する
       }
     };
     void loadBaselines();
-    const interval = setInterval(loadBaselines, 1500);
+    const interval = setInterval(loadBaselines, BASELINE_POLL_INTERVAL_MS);
     return () => {
       mounted = false;
       clearInterval(interval);
@@ -383,21 +453,27 @@ export function MonitoringHome({
         };
         if (!isMounted || !result.items || result.items.length === 0) return;
 
-        const converted: MountainArea[] = result.items.map((m) => ({
-          id: m.id,
-          name: m.name,
-          areaName: m.area_name,
-          description: m.description,
-          minLatitude: m.min_latitude,
-          maxLatitude: m.max_latitude,
-          minLongitude: m.min_longitude,
-          maxLongitude: m.max_longitude,
-          mapImageUrl: m.map_image_url,
-          centerLatitude: (m.min_latitude + m.max_latitude) / 2,
-          centerLongitude: (m.min_longitude + m.max_longitude) / 2,
+        const converted: MountainArea[] = result.items.map((mountainItem) => ({
+          id: mountainItem.id,
+          name: mountainItem.name,
+          areaName: mountainItem.area_name,
+          description: mountainItem.description,
+          minLatitude: mountainItem.min_latitude,
+          maxLatitude: mountainItem.max_latitude,
+          minLongitude: mountainItem.min_longitude,
+          maxLongitude: mountainItem.max_longitude,
+          mapImageUrl: mountainItem.map_image_url,
+          centerLatitude:
+            (mountainItem.min_latitude + mountainItem.max_latitude) / 2,
+          centerLongitude:
+            (mountainItem.min_longitude + mountainItem.max_longitude) / 2,
         }));
         setMountainsList(converted);
-        if (!converted.some((m) => m.id === selectedMountainId)) {
+        if (
+          !converted.some(
+            (mountainItem) => mountainItem.id === selectedMountainId,
+          )
+        ) {
           setSelectedMountainId(converted[0]?.id ?? "gozaisyo-01");
         }
       } catch {
@@ -411,8 +487,8 @@ export function MonitoringHome({
     };
   }, [selectedMountainId]);
 
-  const handleCreateMountain = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateMountain = async (formEvent: React.FormEvent) => {
+    formEvent.preventDefault();
     if (!newMountainName.trim() || !newAreaName.trim()) return;
 
     try {
@@ -422,10 +498,10 @@ export function MonitoringHome({
         body: JSON.stringify({
           name: newMountainName.trim(),
           area_name: newAreaName.trim(),
-          min_latitude: 35.008,
-          max_latitude: 35.025,
-          min_longitude: 136.415,
-          max_longitude: 136.455,
+          min_latitude: DEFAULT_NEW_MOUNTAIN_MIN_LAT,
+          max_latitude: DEFAULT_NEW_MOUNTAIN_MAX_LAT,
+          min_longitude: DEFAULT_NEW_MOUNTAIN_MIN_LON,
+          max_longitude: DEFAULT_NEW_MOUNTAIN_MAX_LON,
           map_image_url:
             newMapImageUrl.trim() || "/maps/gozaisyo_toukousen.png",
         }),
@@ -479,7 +555,7 @@ export function MonitoringHome({
 
   const currentMountain = useMemo(
     () =>
-      mountainsList.find((m) => m.id === selectedMountainId) ??
+      mountainsList.find((mountain) => mountain.id === selectedMountainId) ??
       mountainsList[0] ??
       DEMO_MOUNTAINS[0],
     [mountainsList, selectedMountainId],
@@ -506,7 +582,9 @@ export function MonitoringHome({
     ) {
       return [];
     }
-    const registeredCodes = new Set(baseSensors.map((s) => s.sensorCode));
+    const registeredCodes = new Set(
+      baseSensors.map((sensor) => sensor.sensorCode),
+    );
     const allLiveNodeIds = new Set(
       testObservations.items.map((item) => item.node_id),
     );
@@ -515,104 +593,45 @@ export function MonitoringHome({
     );
   }, [dataMode, testObservations, baseSensors]);
 
-  // 実機テストモード時（USBシリアル受信時）は、届いた生観測値を台帳センサーへ正規照合（固定エイリアス廃止）
+  // 実機テストモード時は共通評価関数 evaluateLiveSensorState を用いて傾斜・重要度・通信鮮度を一貫評価する（Issue #28, #31）
   const activeSensors = useMemo(() => {
-    if (
-      dataMode !== "test" ||
-      !testObservations?.items ||
-      testObservations.items.length === 0
-    ) {
+    if (dataMode !== "test") {
       return filteredSensors;
     }
 
-    const latestByNode: Record<string, (typeof testObservations.items)[0]> = {};
-    for (const item of testObservations.items) {
+    const latestByNode: Record<
+      string,
+      NonNullable<typeof testObservations>["items"][number]
+    > = {};
+    for (const item of testObservations?.items ?? []) {
       latestByNode[item.node_id] = item;
     }
 
-    return filteredSensors.map((sensor) => {
-      // 台帳の sensorCode とパケットの node_id を完全一致で正規照合
-      const live = latestByNode[sensor.sensorCode];
-      if (!live) return sensor;
-      // seq=0 の全軸ゼロは基準取得・角度計算から除外する（Issue #13）
-      const isZeroAcc =
-        live.ax_mg === 0 && live.ay_mg === 0 && live.az_mg === 0;
+    const refreshedTimestampMs = testObservations?.refreshed_at
+      ? Date.parse(testObservations.refreshed_at)
+      : Number.NaN;
+    const evaluationTimestampMs =
+      !testObsError && Number.isFinite(refreshedTimestampMs)
+        ? Math.max(currentTimestampMs, refreshedTimestampMs)
+        : currentTimestampMs;
 
-      const soilMoisture =
-        live.soil_raw === null || live.soil_raw === -1
-          ? null
-          : Math.min(Math.max(live.soil_raw / 2000, 0), 1.0);
-      const nodeBaseline = baselines[sensor.sensorCode];
-      let tiltDeg: number | null = null;
-      let severity: ObservationSeverity = "normal";
-
-      if (isZeroAcc) {
-        tiltDeg = null;
-      } else if (nodeBaseline) {
-        // 確定した基準姿勢ベクトルとの成す角（度）を計算 (内積・コサイン類似度)
-        const dot =
-          live.ax_mg * nodeBaseline.ax +
-          live.ay_mg * nodeBaseline.ay +
-          live.az_mg * nodeBaseline.az;
-        const normCurr = Math.sqrt(
-          live.ax_mg ** 2 + live.ay_mg ** 2 + live.az_mg ** 2,
-        );
-        const normBase = Math.sqrt(
-          nodeBaseline.ax ** 2 + nodeBaseline.ay ** 2 + nodeBaseline.az ** 2,
-        );
-        if (normCurr > 0 && normBase > 0) {
-          const cosTheta = Math.max(
-            -1.0,
-            Math.min(1.0, dot / (normCurr * normBase)),
-          );
-          tiltDeg =
-            Math.round(((Math.acos(cosTheta) * 180) / Math.PI) * 10) / 10;
-          if (tiltDeg >= 15.0) {
-            severity = "danger";
-          } else if (tiltDeg >= 5.0) {
-            severity = "caution";
-          }
-        }
-      } else {
-        // 基準未設定時は水平面に対する仮傾斜
-        const horizontalAcc = Math.sqrt(live.ax_mg ** 2 + live.ay_mg ** 2);
-        tiltDeg =
-          Math.round(
-            ((Math.atan2(horizontalAcc, Math.max(Math.abs(live.az_mg), 1)) *
-              180) /
-              Math.PI) *
-              10,
-          ) / 10;
-      }
-
-      const batteryPct =
-        live.battery_mv === null || live.battery_mv === -1
-          ? null
-          : Math.min(
-              Math.max(Math.round(((live.battery_mv - 2800) / 800) * 100), 0),
-              100,
-            );
-      // 最終受信からの経過時間で通信状態を判定（60秒以上経過で受信途絶）
-      const receivedEpoch = new Date(live.received_at).getTime();
-      const currentEpoch = new Date(testObservations.refreshed_at).getTime();
-      const isFresh =
-        !isNaN(receivedEpoch) &&
-        !isNaN(currentEpoch) &&
-        currentEpoch - receivedEpoch < 60_000;
-      const commStatus: CommunicationStatus = isFresh ? "online" : "offline";
-
-      return {
-        ...sensor,
-        source: "device_test" as const,
-        observationSeverity: severity,
-        soilMoistureValue: soilMoisture,
-        tiltValue: tiltDeg,
-        batteryPercent: batteryPct,
-        lastReceivedAt: live.received_at,
-        communicationStatus: commStatus,
-      };
-    });
-  }, [baselines, dataMode, filteredSensors, testObservations]);
+    return filteredSensors.map((sensor) =>
+      evaluateLiveSensorState(
+        sensor,
+        latestByNode[sensor.sensorCode] ?? null,
+        baselines[sensor.sensorCode] ?? null,
+        evaluationTimestampMs,
+        Boolean(testObsError),
+      ),
+    );
+  }, [
+    baselines,
+    currentTimestampMs,
+    dataMode,
+    filteredSensors,
+    testObsError,
+    testObservations,
+  ]);
 
   const visibleSensorIds = useMemo(
     () => new Set(activeSensors.map((sensor) => sensor.id)),
@@ -622,18 +641,28 @@ export function MonitoringHome({
   const currentModalSensor = useMemo(
     () =>
       selectedModalSensor
-        ? (activeSensors.find((s) => s.id === selectedModalSensor.id) ??
-          selectedModalSensor)
+        ? (activeSensors.find(
+            (sensor) => sensor.id === selectedModalSensor.id,
+          ) ?? selectedModalSensor)
         : null,
     [activeSensors, selectedModalSensor],
   );
 
   const effectiveRefreshedAt = useMemo(() => {
     if (dataMode === "test") {
-      return testObservations?.refreshed_at ?? snapshot.refreshedAt;
+      if (!testObsError && testObservations?.refreshed_at) {
+        return testObservations.refreshed_at;
+      }
+      return new Date(currentTimestampMs).toISOString();
     }
     return snapshot.refreshedAt;
-  }, [dataMode, snapshot.refreshedAt, testObservations?.refreshed_at]);
+  }, [
+    currentTimestampMs,
+    dataMode,
+    snapshot.refreshedAt,
+    testObsError,
+    testObservations,
+  ]);
 
   const activeAlerts = useMemo<DemoAlert[]>(() => {
     if (dataMode !== "test") {
@@ -656,7 +685,7 @@ export function MonitoringHome({
           startedAt,
           measuredValue: sensor.tiltValue,
           unit: "deg",
-          source: "demo",
+          source: "device_test",
         });
       }
       if (sensor.lowBattery) {
@@ -670,7 +699,7 @@ export function MonitoringHome({
           startedAt,
           measuredValue: sensor.batteryPercent,
           unit: "%",
-          source: "demo",
+          source: "device_test",
         });
       }
     }
@@ -679,7 +708,9 @@ export function MonitoringHome({
 
   const handleDeleteSensorFromMap = useCallback(
     async (sensorId: string) => {
-      const targetSensor = activeSensors.find((s) => s.id === sensorId);
+      const targetSensor = activeSensors.find(
+        (sensor) => sensor.id === sensorId,
+      );
       const name = targetSensor?.name ?? sensorId;
       const code = targetSensor?.sensorCode ?? "";
       if (
@@ -694,8 +725,10 @@ export function MonitoringHome({
           `/api/test-sensors/${encodeURIComponent(sensorId)}`,
           { method: "DELETE" },
         );
-        if (res.ok || res.status === 204) {
-          setRegisteredSensors((prev) => prev.filter((s) => s.id !== sensorId));
+        if (res.ok || res.status === HTTP_NO_CONTENT) {
+          setRegisteredSensors((prev) =>
+            prev.filter((sensor) => sensor.id !== sensorId),
+          );
           setSelectedModalSensor(null);
         } else {
           alert("センサーの削除に失敗しました");
@@ -729,7 +762,10 @@ export function MonitoringHome({
     if (dataMode === "test" || newAlerts.length === 0) {
       return;
     }
-    const timeoutId = window.setTimeout(dismissNewAlerts, 6_000);
+    const timeoutId = window.setTimeout(
+      dismissNewAlerts,
+      TOAST_DISMISS_DELAY_MS,
+    );
     return () => window.clearTimeout(timeoutId);
   }, [dataMode, dismissNewAlerts, newAlerts.length]);
 
@@ -737,11 +773,11 @@ export function MonitoringHome({
   const liveDangerSensor = useMemo(() => {
     return (
       activeSensors.find(
-        (s) =>
-          s.observationSeverity === "danger" &&
-          s.tiltValue !== null &&
-          s.tiltValue >= 15.0 &&
-          !dismissedDangerCodes[s.sensorCode],
+        (sensor) =>
+          sensor.observationSeverity === "danger" &&
+          sensor.tiltValue !== null &&
+          sensor.tiltValue >= DANGER_TILT_THRESHOLD_DEG &&
+          !dismissedDangerCodes[sensor.sensorCode],
       ) ?? null
     );
   }, [activeSensors, dismissedDangerCodes]);
@@ -753,7 +789,7 @@ export function MonitoringHome({
         sensorName: liveDangerSensor.name,
         sensorCode: liveDangerSensor.sensorCode,
         code: liveDangerSensor.sensorCode,
-        tiltDeg: liveDangerSensor.tiltValue ?? 15.0,
+        tiltDeg: liveDangerSensor.tiltValue ?? DANGER_TILT_THRESHOLD_DEG,
         reason: "大きな姿勢変化（倒木・地滑りの危険）",
       };
       const timer = setTimeout(() => {
@@ -768,12 +804,12 @@ export function MonitoringHome({
     const dismissedKeys = Object.keys(dismissedDangerCodes);
     if (dismissedKeys.length === 0) return;
     const recoveredCodes = dismissedKeys.filter((code) => {
-      const sensor = activeSensors.find((s) => s.sensorCode === code);
+      const sensor = activeSensors.find((item) => item.sensorCode === code);
       if (!sensor) return false;
       return (
         sensor.observationSeverity !== "danger" ||
         sensor.tiltValue === null ||
-        sensor.tiltValue < 15.0
+        sensor.tiltValue < DANGER_TILT_THRESHOLD_DEG
       );
     });
     if (recoveredCodes.length > 0) {
@@ -798,7 +834,7 @@ export function MonitoringHome({
         sensorName: liveDangerSensor.name,
         sensorCode: liveDangerSensor.sensorCode,
         code: liveDangerSensor.sensorCode,
-        tiltDeg: liveDangerSensor.tiltValue ?? 15.0,
+        tiltDeg: liveDangerSensor.tiltValue ?? DANGER_TILT_THRESHOLD_DEG,
         reason: "大きな姿勢変化（倒木・地滑りの危険）",
       };
     }
@@ -816,13 +852,17 @@ export function MonitoringHome({
     manualEmergencyAlert,
   ]);
 
+  const previousEmergencyCodeRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (activeEmergencyAlert) {
+      previousEmergencyCodeRef.current = activeEmergencyAlert.sensorCode;
       startPcAlarm();
       void fetch("/api/test-baseline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          node_id: activeEmergencyAlert.sensorCode,
           activeAlert: {
             sensorCode: activeEmergencyAlert.sensorCode,
             sensorName: activeEmergencyAlert.sensorName,
@@ -831,14 +871,22 @@ export function MonitoringHome({
             triggeredAt: new Date().toISOString(),
           },
         }),
-      }).catch(() => {});
+      }).catch(() => {
+        // 警報同期APIが一時的に応答しない場合もPC画面の警報表示は継続する
+      });
     } else {
       stopPcAlarm();
-      void fetch("/api/test-baseline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clearAlert: true }),
-      }).catch(() => {});
+      const clearedCode = previousEmergencyCodeRef.current;
+      if (clearedCode) {
+        previousEmergencyCodeRef.current = null;
+        void fetch("/api/test-baseline", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clearAlert: true, node_id: clearedCode }),
+        }).catch(() => {
+          // 警報解除同期の失敗時は次回ポーリングで再同期する
+        });
+      }
     }
     return () => stopPcAlarm();
   }, [activeEmergencyAlert, startPcAlarm, stopPcAlarm]);
@@ -920,7 +968,7 @@ export function MonitoringHome({
         }
         environmentLabel={dataMode === "test" ? "実機 TEST" : "デモモード"}
         isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen((v) => !v)}
+        onToggle={() => setSidebarOpen((previousOpen) => !previousOpen)}
       />
 
       <section className={styles.workspace}>
@@ -972,12 +1020,13 @@ export function MonitoringHome({
                   const codesToDismiss: Record<string, boolean> = {
                     [activeEmergencyAlert.sensorCode]: true,
                   };
-                  for (const s of activeSensors) {
+                  for (const sensor of activeSensors) {
                     if (
-                      s.observationSeverity === "danger" ||
-                      (s.tiltValue !== null && s.tiltValue >= 15.0)
+                      sensor.observationSeverity === "danger" ||
+                      (sensor.tiltValue !== null &&
+                        sensor.tiltValue >= DANGER_TILT_THRESHOLD_DEG)
                     ) {
-                      codesToDismiss[s.sensorCode] = true;
+                      codesToDismiss[sensor.sensorCode] = true;
                     }
                   }
                   setDismissedDangerCodes((prev) => ({
@@ -1060,16 +1109,16 @@ export function MonitoringHome({
               className={styles.engineSwitcher}
               role="group"
             >
-              {mountainsList.map((m) => (
+              {mountainsList.map((mountain) => (
                 <button
                   data-sanmou-button="secondary"
-                  aria-pressed={m.id === selectedMountainId}
-                  className={`${styles.engineBtn} ${m.id === selectedMountainId ? styles.activeEngine : ""}`}
-                  key={m.id}
-                  onClick={() => setSelectedMountainId(m.id)}
+                  aria-pressed={mountain.id === selectedMountainId}
+                  className={`${styles.engineBtn} ${mountain.id === selectedMountainId ? styles.activeEngine : ""}`}
+                  key={mountain.id}
+                  onClick={() => setSelectedMountainId(mountain.id)}
                   type="button"
                 >
-                  {m.name}
+                  {mountain.name}
                 </button>
               ))}
               <button
@@ -1106,7 +1155,9 @@ export function MonitoringHome({
               layerStates={layerStates}
               onLayerChange={handleLayerChange}
               onPresetChange={handlePresetChange}
-              onToggleOpen={() => setLayerPanelOpen((v) => !v)}
+              onToggleOpen={() =>
+                setLayerPanelOpen((previousOpen) => !previousOpen)
+              }
             />
 
             <button
@@ -1115,7 +1166,9 @@ export function MonitoringHome({
                 isWarningPanelOpen ? "警告パネルを閉じる" : "警告パネルを開く"
               }
               className={`${styles.warningToggleBtn} ${activeAlerts.length > 0 ? styles.hasAlerts : ""}`}
-              onClick={() => setIsWarningPanelOpen((v) => !v)}
+              onClick={() =>
+                setIsWarningPanelOpen((previousOpen) => !previousOpen)
+              }
               type="button"
             >
               <Icon name="alert" />
@@ -1191,9 +1244,22 @@ export function MonitoringHome({
               <OfflineMountainMap
                 layerStates={layerStates}
                 mapImageUrl={currentMountain.mapImageUrl}
+                mountainBounds={
+                  currentMountain.minLatitude !== undefined &&
+                  currentMountain.maxLatitude !== undefined &&
+                  currentMountain.minLongitude !== undefined &&
+                  currentMountain.maxLongitude !== undefined
+                    ? {
+                        minLat: currentMountain.minLatitude,
+                        maxLat: currentMountain.maxLatitude,
+                        minLon: currentMountain.minLongitude,
+                        maxLon: currentMountain.maxLongitude,
+                      }
+                    : undefined
+                }
                 mountainName={`${currentMountain.name} ${currentMountain.areaName}`}
-                overlayPaths={DEMO_OVERLAY_PATHS}
-                overlayPoints={DEMO_OVERLAY_POINTS}
+                overlayPaths={dataMode === "test" ? [] : DEMO_OVERLAY_PATHS}
+                overlayPoints={dataMode === "test" ? [] : DEMO_OVERLAY_POINTS}
                 selectedSensorId={selectedSensorId}
                 sensors={activeSensors}
                 onSelectSensor={(sensor) => setSelectedModalSensor(sensor)}
@@ -1250,7 +1316,7 @@ export function MonitoringHome({
               sensorName: target?.name ?? "樹木ノード T1（タニ装着）",
               sensorCode: code,
               code,
-              tiltDeg: 24.5,
+              tiltDeg: TEST_ALERT_DEMO_TILT_DEG,
               reason: "大きな姿勢変化検知（実演ピッチ用）",
             });
           }}
@@ -1292,8 +1358,9 @@ export function MonitoringHome({
       {isAddMountainOpen && (
         <div
           className={styles.modalBackdrop}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsAddMountainOpen(false);
+          onClick={(mouseEvent) => {
+            if (mouseEvent.target === mouseEvent.currentTarget)
+              setIsAddMountainOpen(false);
           }}
         >
           <div
@@ -1320,7 +1387,9 @@ export function MonitoringHome({
                   placeholder="例: 御在所岳"
                   required
                   value={newMountainName}
-                  onChange={(e) => setNewMountainName(e.target.value)}
+                  onChange={(changeEvent) =>
+                    setNewMountainName(changeEvent.target.value)
+                  }
                 />
               </label>
               <label className={styles.formField}>
@@ -1329,7 +1398,9 @@ export function MonitoringHome({
                   placeholder="例: 本谷・一ノ谷工区"
                   required
                   value={newAreaName}
-                  onChange={(e) => setNewAreaName(e.target.value)}
+                  onChange={(changeEvent) =>
+                    setNewAreaName(changeEvent.target.value)
+                  }
                 />
               </label>
               <label className={styles.formField}>
@@ -1337,7 +1408,9 @@ export function MonitoringHome({
                 <input
                   placeholder="/maps/gozaisyo_toukousen.png"
                   value={newMapImageUrl}
-                  onChange={(e) => setNewMapImageUrl(e.target.value)}
+                  onChange={(changeEvent) =>
+                    setNewMapImageUrl(changeEvent.target.value)
+                  }
                 />
                 <small>※ 森林基本図スキャンPNGまたは航空写真画像</small>
               </label>
@@ -1362,8 +1435,9 @@ export function MonitoringHome({
       {isQrModalOpen && (
         <div
           className={styles.modalBackdrop}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsQrModalOpen(false);
+          onClick={(mouseEvent) => {
+            if (mouseEvent.target === mouseEvent.currentTarget)
+              setIsQrModalOpen(false);
           }}
         >
           <div
@@ -1409,7 +1483,7 @@ export function MonitoringHome({
               </div>
 
               <div className={styles.qrContainer}>
-                <QrCode size={220} value={mobileUrl} />
+                <QrCode size={QR_CODE_SIZE_PX} value={mobileUrl} />
               </div>
 
               <div className={styles.qrUrlBox}>
@@ -1455,7 +1529,9 @@ export function MonitoringHome({
                     className={styles.ipInput}
                     placeholder={networkIp}
                     value={customIp}
-                    onChange={(e) => setCustomIp(e.target.value)}
+                    onChange={(changeEvent) =>
+                      setCustomIp(changeEvent.target.value)
+                    }
                   />
                   {customIp && (
                     <button

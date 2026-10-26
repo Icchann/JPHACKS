@@ -82,6 +82,7 @@
   width: 100%;
   min-height: 480px;
   overflow: hidden;
+  overscroll-behavior: contain;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -89,7 +90,6 @@
   cursor: grab;
   touch-action: none;
 }
-
 .canvasContainer.dragging {
   cursor: grabbing;
 }
@@ -125,7 +125,7 @@
 
 .expandedFullscreen .canvasContainer {
   min-height: unset !important;
-  height: calc(100vh - 54px) !important;
+  height: calc(100vh - 96px) !important;
 }
 
 .expandButton {
@@ -329,6 +329,9 @@
   fill: #dc2626;
 }
 
+.markerPin.unknown {
+  fill: #64748b;
+}
 /* ホバー時はピンの枠線と影のみを強調（位置や拡大は一切変更しない） */
 .sensorMarkerGroup:hover .markerPin,
 .sensorMarkerGroup:focus-visible .markerPin {
@@ -399,29 +402,89 @@
   pointer-events: none;
 }
 
-/* 森林計画図凡例 */
-.mapLegend {
+/* 工区外・現地仮設スロット枠（案C: Issue #33） */
+.offSiteSlotContainer {
   pointer-events: none;
 }
 
-.legendBox {
+.offSiteSlotRect {
   fill: rgba(255, 255, 255, 0.92);
-  stroke: #dcd6c8;
-  stroke-width: 1;
+  stroke: #8a7158;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 3;
 }
 
-.legendHeader {
+.offSiteSlotTitle {
   font-size: 11px;
   font-weight: 700;
-  fill: #3e3226;
+  fill: #4b382a;
 }
 
-.legendItem {
-  font-size: 10px;
+/* 森林基本図の外部凡例バー（地図・ピンとの重なりやズーム肥大化を防止） */
+.externalLegendBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-muted);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.legendItemsGroup {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.legendBarItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 600;
-  fill: #5a4b3d;
+  color: #4b382a;
 }
 
+.legendSwatchIndexContour {
+  display: inline-block;
+  width: 20px;
+  height: 2px;
+  background: #8a7158;
+  border-radius: 1px;
+}
+
+.legendSwatchIntermediateContour {
+  display: inline-block;
+  width: 20px;
+  height: 1px;
+  background: #baa38f;
+}
+
+.legendSwatchStream {
+  display: inline-block;
+  width: 20px;
+  height: 3px;
+  background: #6b94b0;
+  border-radius: 2px;
+}
+
+.legendSwatchRoad {
+  display: inline-block;
+  width: 20px;
+  height: 3px;
+  background: #8c5828;
+  border-radius: 2px;
+}
+
+.gestureGuideText {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-subtle);
+}
 /* ホバーツールチップ */
 .hoverTooltip {
   position: absolute;

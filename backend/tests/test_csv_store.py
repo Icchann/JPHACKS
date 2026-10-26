@@ -77,7 +77,8 @@ def test_append_writes_header_to_existing_zero_byte_file(tmp_path: Path) -> None
 
 def test_append_accepts_existing_utf8_bom_header(tmp_path: Path) -> None:
     csv_path = tmp_path / "observations.csv"
-    csv_path.write_text(",".join(CSV_COLUMNS) + "\r\n", encoding="utf-8-sig")
+    # Windows環境で write_text が \r\n を \r\r\n に変換するのを防ぐためバイナリ書込で固定する。
+    csv_path.write_bytes((",".join(CSV_COLUMNS) + "\r\n").encode("utf-8-sig"))
     store = ObservationCsvStore(csv_path)
     observation = parse_serial_line("S0,T1,1,0,3115,-128,-176,928,-1,-1")
     assert observation is not None

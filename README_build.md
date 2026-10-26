@@ -42,25 +42,39 @@ python scripts/run_test_environment.py --no-serial
 
 これは新しい無線受信の試験ではありません。
 
+### 単独PC安全モード（既定）とLAN公開モードの切り替え
+
+意図しない同一LAN内からのセンサー台帳改変や観測履歴削除を防ぐため、`scripts/run_test_environment.py` と `start.py` は既定で Next.js を `127.0.0.1`（単独PC安全モード）で待ち受けます。
+
+スマホ実機（`/mobile`）など同一LAN内の別端末からアクセスする場合は、`--allow-lan` 引数（または環境変数 `SANMOU_ALLOW_LAN=1`）を指定して起動してください。
+
+```bash
+python scripts/run_test_environment.py --no-serial --allow-lan
+```
+
+さらに、変更・削除系API（`/api/test-sensors` の `POST`/`PATCH`/`DELETE`、`/api/test-observations` の `DELETE`）は Cross-Origin リクエスト（`Origin` 不一致）を `403 Forbidden` で拒否し、環境変数 `SANMOU_OPERATOR_TOKEN` 設定時は `X-Sanmou-Operator-Token` ヘッダー（または `operator_token` クエリ）が一致しないリクエストを `401 Unauthorized` で保護します。
+
 ## 3. 機器なしのデモ画面
 
-Windowsは `start_demo.bat`、macOS / Linuxは `bash start_demo.sh` を使用します。`start.py` はフロント依存を確認し、バックエンド仮想環境がある場合はその起動も試みます。初回のバックエンド導入をすべて行うスクリプトとは別です。
+Windowsは `start_demo.bat`、macOS / Linuxは `bash start_demo.sh` を使用します（LAN内のスマホから接続する場合は `python start.py --allow-lan` を実行します）。`start.py` はフロント依存を確認し、バックエンド仮想環境がある場合はその起動も試みます。初回のバックエンド導入をすべて行うスクリプトとは別です。
 
 デモ値や仮座標は実機の測定結果ではありません。終了は起動元でCtrl+Cを使用し、プロセスが残っていないか確認してください。ウィンドウを閉じるだけで全環境の子プロセス停止が保証されるとはしません。
 
 ## 4. 画面
 
-| URL                               | 用途・注意                                                          |
-| --------------------------------- | ------------------------------------------------------------------- |
-| `http://localhost:3000/map`       | 機体位置・レイヤー・基準設定・警告等。実在地図とデモ図形を区別      |
-| `http://localhost:3000/dashboard` | CSV観測の数値・履歴。未計測は未計測として表示                       |
-| `http://localhost:3000/sensors`   | SQLite台帳の登録・編集                                              |
-| `http://localhost:3000/mobile`    | スマホ向けWeb画面。スマホからの接続にはPCの到達可能なアドレスを使う |
-| `http://127.0.0.1:8000/health`    | FastAPI疎通。機体の受信継続を保証するものではない                   |
+| URL                               | 用途・注意                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `http://localhost:3000/map`       | 機体位置・レイヤー・基準設定・警告等。実在地図とデモ図形を区別                                               |
+| `http://localhost:3000/dashboard` | CSV観測の数値・履歴。未計測は未計測として表示                                                                |
+| `http://localhost:3000/sensors`   | SQLite台帳の登録・編集                                                                                       |
+| `http://localhost:3000/mobile`    | スマホ向けWeb画面。未同期キューからの同期は手動ボタン操作。スマホ実機からの接続時は `--allow-lan` で起動する |
+| `http://127.0.0.1:8000/health`    | FastAPI疎通。機体の受信継続を保証するものではない                                                            |
 
-スマホのlocalhostはスマホ自身です。PCとスマホ間はローカルWi-Fi等、待受、ファイアウォール、認証、必要なHTTPS・端末権限を確認します。現在の開発サーバーを公開インターネットへ露出しないでください。
+スマホのlocalhostはスマホ自身です。PCとスマホ間はローカルWi-Fi等、`--allow-lan` による待受許可、ファイアウォール、必要に応じた `SANMOU_OPERATOR_TOKEN`、HTTPS・端末権限を確認します。現在の開発サーバーを公開インターネットへ露出しないでください。
 
-本リポジトリで確認できるモバイル実装はWebです。Flutterソースの所在が確認できていないため、ここから `flutter run` する手順は掲載しません。独立アプリ化は将来目標です。
+本リポジトリで確認できるモバイル実装は Next.js Web 画面（`/mobile`）であり、圏外キューからの同期は手動ボタン操作です。Flutterネイティブアプリ、BLE近接SOS、帰社後の自動同期は将来構想であり、ここから `flutter run` する手順は存在しません。
+
+また、データ上の時刻は `installed_at`（スマホでの設置記録時刻）、`sample_ms`（マイコン起動後ミリ秒）、`received_at`（PC受信時刻）の3種類に明確に区別されており、`installed_at` を記録しただけで `sample_ms` が絶対観測日時に変換されるわけではありません。
 
 ## 5. 手動セットアップ
 

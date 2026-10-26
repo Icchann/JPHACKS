@@ -12,10 +12,12 @@ const SEVERITY_ORDER: Record<AlertSeverity, number> = {
   status: 2,
 };
 
+// 未観測や基準未設定・通信途絶時に正常と誤認させないため、未判定ラベルを定義する
 export const OBSERVATION_LABELS: Record<ObservationSeverity, string> = {
   normal: "正常",
   caution: "注意",
   danger: "危険",
+  unknown: "未判定",
 };
 
 export const ALERT_LABELS: Record<AlertSeverity, string> = {
@@ -51,10 +53,11 @@ export function countSeverities(
 ): Record<ObservationSeverity, number> {
   return sensors.reduce<Record<ObservationSeverity, number>>(
     (counts, sensor) => {
-      counts[sensor.observationSeverity] += 1;
+      counts[sensor.observationSeverity] =
+        (counts[sensor.observationSeverity] ?? 0) + 1;
       return counts;
     },
-    { normal: 0, caution: 0, danger: 0 },
+    { normal: 0, caution: 0, danger: 0, unknown: 0 },
   );
 }
 

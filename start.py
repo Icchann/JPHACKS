@@ -5,6 +5,7 @@
 依存関係の確認・サーバー起動・ブラウザ表示までを全自動で行うためのスクリプト。
 """
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -19,8 +20,30 @@ FRONTEND_DIR = ROOT_DIR / "frontend"
 DEFAULT_DATABASE_PATH = BACKEND_DIR / "data" / "sanmou-test.sqlite3"
 BACKEND_HOST = "127.0.0.1"
 BACKEND_PORT = 8000
+DEFAULT_FRONTEND_HOST = "127.0.0.1"
+LAN_FRONTEND_HOST = "0.0.0.0"
 PROCESS_STOP_TIMEOUT_SECONDS = 5
 BROWSER_OPEN_DELAY_SECONDS = 2.5
+BANNER_LINE_WIDTH = 50
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="山網（Sanmou）山林監視システムを起動します"
+    )
+    parser.add_argument(
+        "--allow-lan",
+        action="store_true",
+        help="LAN内のスマホ等から接続できるよう Next.js を 0.0.0.0 で待ち受けます",
+    )
+    return parser.parse_args()
+
+
+def resolve_frontend_host(allow_lan_flag: bool) -> str:
+    # 意図しないLAN公開による管理APIへの第三者到達を防ぐため、既定は127.0.0.1に限定します。
+    if allow_lan_flag or os.environ.get("SANMOU_ALLOW_LAN") == "1":
+        return LAN_FRONTEND_HOST
+    return DEFAULT_FRONTEND_HOST
 
 
 def get_npm_executable() -> str:
@@ -93,9 +116,11 @@ def stop_process(proc: subprocess.Popen[bytes] | None) -> None:
 
 
 def main() -> None:
-    print("=" * 50)
+    args = parse_args()
+    frontend_host = resolve_frontend_host(bool(args.allow_lan))
+    print("=" * BANNER_LINE_WIDTH)
     print("  🌲 山網（Sanmou）山林監視システム を起動しています")
-    print("=" * 50)
+    print("=" * BANNER_LINE_WIDTH)
 
     npm_bin = get_npm_executable()
     ensure_frontend_dependencies(npm_bin)
@@ -134,10 +159,10 @@ def main() -> None:
             env=backend_env,
         )
 
-    print("\n[2/3] Webサーバーを起動しています...")
-    # Next.js 開発サーバーを起動
+    print(f"\n[2/3] Webサーバーを起動しています（待受: {frontend_host}）...")
+    # Next.js 開発サーバーを起動（単独PC安全モードが既定、--allow-lan指定時のみLAN公開）
     process = subprocess.Popen(
-        [npm_bin, "run", "dev", "--", "--hostname", "0.0.0.0"],
+        [npm_bin, "run", "dev", "--", "--hostname", frontend_host],
         cwd=FRONTEND_DIR,
     )
 
@@ -150,8 +175,8 @@ def main() -> None:
     try:
         webbrowser.open(url)
     except (OSError, webbrowser.Error):
-        # ブラウザ自動起動に失敗してもURLを明示しているので続行
-        pass
+        # GUIのない環境等でブラウザ自動起動に失敗した場合もURLを案内してサーバー稼働を継続します。
+        print(f"ブラウザの自動起動をスキップしました。手動で {url} を開いてください。")
 
     try:
         process.wait()

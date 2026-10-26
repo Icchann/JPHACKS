@@ -12,6 +12,15 @@ BACKEND_ROOT = PROJECT_ROOT / "backend"
 FRONTEND_ROOT = PROJECT_ROOT / "frontend"
 DEFAULT_CSV_PATH = BACKEND_ROOT / "data" / "observations.csv"
 DEFAULT_DATABASE_PATH = BACKEND_ROOT / "data" / "sanmou-test.sqlite3"
+DEFAULT_BACKEND_HOST = "127.0.0.1"
+DEFAULT_BACKEND_PORT = 8000
+DEFAULT_FRONTEND_HOST = "127.0.0.1"
+LAN_FRONTEND_HOST = "0.0.0.0"
+DEFAULT_FRONTEND_PORT = 3000
+PROCESS_STOP_TIMEOUT_SECONDS = 5
+BROWSER_OPEN_DELAY_SECONDS = 2.5
+PROCESS_POLL_INTERVAL_SECONDS = 0.5
+TOKEN_BYTE_LENGTH = 32
 
 
 def _parse_args() -> argparse.Namespace:
@@ -36,8 +45,13 @@ def _parse_args() -> argparse.Namespace:
         default=DEFAULT_DATABASE_PATH,
         help="検証用SQLiteデータベースの保存先",
     )
-    parser.add_argument("--backend-port", type=int, default=8000)
-    parser.add_argument("--frontend-port", type=int, default=3000)
+    parser.add_argument("--backend-port", type=int, default=DEFAULT_BACKEND_PORT)
+    parser.add_argument("--frontend-port", type=int, default=DEFAULT_FRONTEND_PORT)
+    parser.add_argument(
+        "--allow-lan",
+        action="store_true",
+        help="LAN内のスマホ等から接続できるよう Next.js を 0.0.0.0 で待ち受けます",
+    )
     args = parser.parse_args()
     if not args.no_serial and not args.port:
         parser.error("USB受信を行う場合は --port COM3 のように指定してください")
@@ -105,9 +119,16 @@ def _stop_processes(processes: list[subprocess.Popen[bytes]]) -> None:
         if process.poll() is not None:
             continue
         try:
-            process.wait(timeout=5)
+            process.wait(timeout=PROCESS_STOP_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             process.kill()
+
+
+def _resolve_frontend_host(allow_lan_flag: bool) -> str:
+    # デフォルトは単独PC安全モード（127.0.0.1）とし、明示指定時のみLAN公開（0.0.0.0）します。
+    if allow_lan_flag or os.environ.get("SANMOU_ALLOW_LAN") == "1":
+        return LAN_FRONTEND_HOST
+    return DEFAULT_FRONTEND_HOST
 
 
 def main() -> int:
@@ -118,14 +139,15 @@ def main() -> int:
     database_path.parent.mkdir(parents=True, exist_ok=True)
     database_url = f"sqlite+pysqlite:///{database_path.as_posix()}"
     environment = os.environ.copy()
-    test_api_token = secrets.token_urlsafe(32)
+    test_api_token = secrets.token_urlsafe(TOKEN_BYTE_LENGTH)
+    frontend_host = _resolve_frontend_host(bool(args.allow_lan))
     environment.update(
         {
             "APP_ENVIRONMENT": "test",
             "OBSERVATION_CSV_PATH": str(csv_path),
             "DATABASE_URL": database_url,
             "FRONTEND_ORIGIN": f"http://localhost:{args.frontend_port}",
-            "BACKEND_INTERNAL_URL": f"http://127.0.0.1:{args.backend_port}",
+            "BACKEND_INTERNAL_URL": f"http://{DEFAULT_BACKEND_HOST}:{args.backend_port}",
             "SANMOU_APP_ENV": "test",
             "SANMOU_TEST_API_TOKEN": test_api_token,
         }
@@ -164,7 +186,7 @@ def main() -> int:
                 "--app-dir",
                 str(BACKEND_ROOT),
                 "--host",
-                "127.0.0.1",
+                DEFAULT_BACKEND_HOST,
                 "--port",
                 str(args.backend_port),
             ],
@@ -179,7 +201,7 @@ def main() -> int:
                 "dev",
                 "--",
                 "--hostname",
-                "0.0.0.0",
+                frontend_host,
                 "--port",
                 str(args.frontend_port),
             ],
@@ -216,14 +238,16 @@ def main() -> int:
         print(f"センサー管理: http://localhost:{args.frontend_port}/sensors")
         print("終了するには Ctrl+C を押してください")
 
-        # 起動から2.5秒後に自動でブラウザを開く
+        # サーバーの待受開始を待ってから自動でブラウザを開き、GUI非対応環境ではURL案内のみで続行します。
         try:
             import webbrowser
 
-            time.sleep(2.5)
+            time.sleep(BROWSER_OPEN_DELAY_SECONDS)
             webbrowser.open(dashboard_url)
         except (OSError, webbrowser.Error):
-            pass
+            print(
+                f"ブラウザの自動起動をスキップしました。手動で {dashboard_url} を開いてください。"
+            )
         reported_stopped: set[str] = set()
         while True:
             for process, (name, _) in zip(processes, commands, strict=True):
@@ -240,7 +264,7 @@ def main() -> int:
                         continue
                     print(f"{name} が終了しました（終了コード: {exit_code}）")
                     return exit_code or 1
-            time.sleep(0.5)
+            time.sleep(PROCESS_POLL_INTERVAL_SECONDS)
     except KeyboardInterrupt:
         print("\ntest環境を終了します")
         return 0

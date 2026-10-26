@@ -17,11 +17,23 @@ describe("monitoring-utils", () => {
     );
   });
 
-  it("観測重要度別に件数を集計する", () => {
+  it("観測重要度別に件数を集計し、未判定センサーも安全に数える", () => {
     expect(countSeverities(DEMO_SENSORS)).toEqual({
       normal: 3,
       caution: 2,
       danger: 1,
+      unknown: 0,
+    });
+    expect(
+      countSeverities([
+        ...DEMO_SENSORS,
+        { ...DEMO_SENSORS[0], id: "unknown-1", observationSeverity: "unknown" },
+      ]),
+    ).toEqual({
+      normal: 3,
+      caution: 2,
+      danger: 1,
+      unknown: 1,
     });
   });
 

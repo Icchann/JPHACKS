@@ -38,9 +38,9 @@ const TABS: Array<{ key: TabKey; label: string; later?: boolean }> = [
   { key: "inspections", label: "現地確認履歴", later: true },
 ];
 
-type DetailSeverity = ObservationSeverity | "unknown";
-type DetailCommunicationStatus = CommunicationStatus | "unknown";
-type DetailDeviceFaultStatus = DeviceFaultStatus | "unknown";
+type DetailSeverity = ObservationSeverity;
+type DetailCommunicationStatus = CommunicationStatus;
+type DetailDeviceFaultStatus = DeviceFaultStatus;
 
 export type DetailSensor = Omit<
   DemoSensor,
@@ -55,10 +55,8 @@ export type DetailSensor = Omit<
   lowBattery: boolean | null;
 };
 
-const SEVERITY_LABELS: Record<DetailSeverity, string> = {
-  ...OBSERVATION_LABELS,
-  unknown: "未判定",
-};
+const SEVERITY_LABELS: Record<DetailSeverity, string> = OBSERVATION_LABELS;
+const COORDINATE_DECIMAL_PLACES = 6;
 
 const COMMUNICATION_LABELS: Record<DetailCommunicationStatus, string> = {
   online: "オンライン",
@@ -76,27 +74,27 @@ type SensorDetailProps = {
   returnPath: "/map" | "/sensors";
   sensor: DetailSensor;
   initialObservations?: DemoObservation[];
+  isCalibrated?: boolean;
 };
 
 function ObservationValue({
   label,
   value,
   stale,
+  detailNote,
 }: {
   label: string;
   value: number | null;
   stale: boolean;
+  detailNote?: string;
 }) {
+  const defaultNote = stale ? "最終受信時点・単位未設定" : "単位未設定";
   return (
     <article className={styles.observationCard} data-missing={value === null}>
       <span>{label}</span>
       <strong>{value === null ? "—" : value}</strong>
       <small>
-        {value === null
-          ? "観測値未取得"
-          : stale
-            ? "最終受信時点・単位未設定"
-            : "単位未設定"}
+        {value === null ? "観測値未取得" : (detailNote ?? defaultNote)}
       </small>
     </article>
   );
@@ -106,11 +104,28 @@ export function SensorDetail({
   returnPath,
   sensor,
   initialObservations,
+  isCalibrated = false,
 }: SensorDetailProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const isDeviceTest = sensor.source === "device_test";
   const isStale = sensor.communicationStatus === "offline";
+
+  // 実機テスト時は基準設定状態（基準差か仮算出か）および仮設定である旨を明示し、確定仕様と誤認させない（Issue #28）
+  const moistureDetailNote = isDeviceTest
+    ? isStale
+      ? "最終受信時点・仮設定（生値正規化・未校正）"
+      : "仮設定（生値正規化・未校正）"
+    : undefined;
+  const tiltDetailNote = isDeviceTest
+    ? isCalibrated
+      ? isStale
+        ? "最終受信時点・基準差（deg・仮設定）"
+        : "基準差（deg・仮設定）"
+      : isStale
+        ? "最終受信時点・基準未設定（仮算出）"
+        : "基準未設定・仮算出（deg）"
+    : undefined;
   const observations = useMemo(() => {
     if (initialObservations) {
       return initialObservations;
@@ -278,11 +293,13 @@ export function SensorDetail({
           >
             <div className={styles.observationGrid}>
               <ObservationValue
+                detailNote={moistureDetailNote}
                 label="土壌水分"
                 stale={isStale}
                 value={sensor.soilMoistureValue}
               />
               <ObservationValue
+                detailNote={tiltDetailNote}
                 label="傾斜"
                 stale={isStale}
                 value={sensor.tiltValue}
@@ -307,8 +324,8 @@ export function SensorDetail({
                   <div>
                     <dt>設置位置</dt>
                     <dd>
-                      {sensor.latitude.toFixed(6)},{" "}
-                      {sensor.longitude.toFixed(6)}
+                      {sensor.latitude.toFixed(COORDINATE_DECIMAL_PLACES)},{" "}
+                      {sensor.longitude.toFixed(COORDINATE_DECIMAL_PLACES)}
                     </dd>
                   </div>
                   <div>
@@ -400,9 +417,25 @@ export function SensorDetail({
                   <header>
                     <div>
                       <h3>{title}</h3>
-                      <span>単位: 未設定</span>
+                      <span>
+                        {isDeviceTest
+                          ? valueKey === "tiltValue"
+                            ? isCalibrated
+                              ? "単位: deg（基準差・仮設定）"
+                              : "単位: deg（基準未設定・仮算出）"
+                            : "単位: 比率（仮設定・未校正）"
+                          : "単位: 未設定"}
+                      </span>
                     </div>
-                    <span>しきい値: 未設定</span>
+                    <span>
+                      {isDeviceTest
+                        ? valueKey === "tiltValue"
+                          ? isCalibrated
+                            ? "しきい値: +5.0°注意 / +15.0°危険（仮設定）"
+                            : "しきい値: 基準未設定（仮算出）"
+                          : "しきい値: 仮設定（未校正）"
+                        : "しきい値: 未設定"}
+                    </span>
                   </header>
                   <SensorTelemetryChart
                     observations={observations}

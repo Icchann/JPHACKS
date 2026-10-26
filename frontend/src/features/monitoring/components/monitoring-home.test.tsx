@@ -233,4 +233,57 @@ describe("MonitoringHome", () => {
       ),
     ).not.toBeInTheDocument();
   });
+
+  it("実機モードで未観測センサーの unknown を正常（normal）に偽装せず、未判定として表示する (Issue #28)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/api/test-sensors")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "reg-unknown-1",
+                sensor_code: "T1",
+                name: "未観測の実機ノードT1",
+                latitude: 35.015,
+                longitude: 136.435,
+                observation_severity: "unknown",
+                communication_status: "unknown",
+                device_fault_status: "unknown",
+                low_battery: null,
+                last_received_at: null,
+                source: "device_test",
+              },
+            ],
+            next_cursor: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/test-observations")) {
+        return new Response(
+          JSON.stringify({
+            items: [],
+            file_exists: false,
+            invalid_row_count: 0,
+            source: "device_test",
+            refreshed_at: "2026-10-26T10:00:00Z",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    render(
+      <MonitoringHome dataMode="test" initialMapEngine="satellite_google" />,
+    );
+    const mapFallback = await screen.findByRole("region", {
+      name: "衛星地図フォールバック",
+    });
+
+    expect(await within(mapFallback).findByText("T1")).toBeInTheDocument();
+    expect(within(mapFallback).getByText("未判定")).toBeInTheDocument();
+    expect(within(mapFallback).queryByText("正常")).not.toBeInTheDocument();
+  });
 });

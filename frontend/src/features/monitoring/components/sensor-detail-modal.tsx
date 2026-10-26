@@ -6,6 +6,26 @@ import type { DemoSensor } from "../types";
 import { Icon } from "./icon";
 import styles from "./sensor-detail-modal.module.css";
 
+const DEFAULT_MOISTURE_FALLBACK = 0.5;
+const MOISTURE_STEP_00 = 0.25;
+const MOISTURE_STEP_06 = 0.15;
+const MOISTURE_STEP_12 = 0.05;
+const MOISTURE_MIN_00 = 0.2;
+const MOISTURE_MIN_06 = 0.3;
+const MOISTURE_MIN_12 = 0.4;
+const DEFAULT_TILT_FALLBACK = 0.5;
+const TILT_POINT_00 = 0.1;
+const TILT_POINT_06 = 0.15;
+const TILT_SCALE_12 = 0.6;
+const PERCENTAGE_MULTIPLIER = 100;
+const DEFAULT_ELEVATION_METERS = 450;
+const CHART_START_X = 40;
+const CHART_STEP_X = 75;
+const CHART_BASE_Y = 100;
+const MOISTURE_CHART_SCALE_Y = 80;
+const TILT_CHART_SCALE_Y = 25;
+const TILT_CHART_MAX_OFFSET_Y = 80;
+
 type SensorDetailModalProps = {
   sensor: DemoSensor | null;
   onClose: () => void;
@@ -43,37 +63,56 @@ export function SensorDetailModal({
 
   const isDanger = sensor.observationSeverity === "danger";
   const isCaution = sensor.observationSeverity === "caution";
+  const isUnknownSeverity = sensor.observationSeverity === "unknown";
   const isTree = sensor.nodeType === "tree";
 
-  // 擬似24時間推移データ（最新値を終点としたSVG折れ線用の点列）
+  // デモ表示時に最新値を終点とした24時間ダイジェスト折れ線を描画するための座標列
   const moisturePoints = [
     {
       time: "00:00",
-      val: Math.max((sensor.soilMoistureValue ?? 0.5) - 0.25, 0.2),
+      value: Math.max(
+        (sensor.soilMoistureValue ?? DEFAULT_MOISTURE_FALLBACK) -
+          MOISTURE_STEP_00,
+        MOISTURE_MIN_00,
+      ),
     },
     {
       time: "06:00",
-      val: Math.max((sensor.soilMoistureValue ?? 0.5) - 0.15, 0.3),
+      value: Math.max(
+        (sensor.soilMoistureValue ?? DEFAULT_MOISTURE_FALLBACK) -
+          MOISTURE_STEP_06,
+        MOISTURE_MIN_06,
+      ),
     },
     {
       time: "12:00",
-      val: Math.max((sensor.soilMoistureValue ?? 0.5) - 0.05, 0.4),
+      value: Math.max(
+        (sensor.soilMoistureValue ?? DEFAULT_MOISTURE_FALLBACK) -
+          MOISTURE_STEP_12,
+        MOISTURE_MIN_12,
+      ),
     },
-    { time: "18:00", val: sensor.soilMoistureValue ?? 0.5 },
+    {
+      time: "18:00",
+      value: sensor.soilMoistureValue ?? DEFAULT_MOISTURE_FALLBACK,
+    },
   ];
 
   const tiltPoints = [
-    { time: "00:00", val: 0.1 },
-    { time: "06:00", val: 0.15 },
-    { time: "12:00", val: (sensor.tiltValue ?? 0.5) * 0.6 },
-    { time: "18:00", val: sensor.tiltValue ?? 0.5 },
+    { time: "00:00", value: TILT_POINT_00 },
+    { time: "06:00", value: TILT_POINT_06 },
+    {
+      time: "12:00",
+      value: (sensor.tiltValue ?? DEFAULT_TILT_FALLBACK) * TILT_SCALE_12,
+    },
+    { time: "18:00", value: sensor.tiltValue ?? DEFAULT_TILT_FALLBACK },
   ];
 
   return (
     <div
       className={styles.backdrop}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+      onClick={(mouseEvent) => {
+        if (mouseEvent.target === mouseEvent.currentTarget) onClose();
       }}
     >
       <div
@@ -97,7 +136,9 @@ export function SensorDetailModal({
                       ? "危険（しきい値超過）"
                       : isCaution
                         ? "注意"
-                        : "正常"
+                        : isUnknownSeverity
+                          ? "未判定"
+                          : "正常"
                   }
                 />
                 <HealthBadge
@@ -105,7 +146,9 @@ export function SensorDetailModal({
                   label={
                     sensor.communicationStatus === "online"
                       ? "通信中"
-                      : "通信断"
+                      : sensor.communicationStatus === "unknown"
+                        ? "未接続"
+                        : "通信断"
                   }
                 />
               </div>
@@ -154,7 +197,7 @@ export function SensorDetailModal({
               <span className={styles.metricLabel}>土壌水分量</span>
               <strong className={styles.metricValue}>
                 {sensor.soilMoistureValue !== null
-                  ? `${(sensor.soilMoistureValue * 100).toFixed(1)}%`
+                  ? `${(sensor.soilMoistureValue * PERCENTAGE_MULTIPLIER).toFixed(1)}%`
                   : "未取得"}
               </strong>
               <span className={styles.metricSub}>
@@ -206,7 +249,7 @@ export function SensorDetailModal({
             <div className={styles.metricCard}>
               <span className={styles.metricLabel}>標高 / 設置環境</span>
               <strong className={styles.metricValue}>
-                {sensor.elevationMeters ?? 450}m
+                {sensor.elevationMeters ?? DEFAULT_ELEVATION_METERS}m
               </strong>
               <span className={styles.metricSub}>
                 {sensor.locationNote ?? "工区急傾斜地"}
@@ -242,17 +285,20 @@ export function SensorDetailModal({
                   <polyline
                     fill="none"
                     points={moisturePoints
-                      .map((p, idx) => `${40 + idx * 75},${100 - p.val * 80}`)
+                      .map(
+                        (point, pointIndex) =>
+                          `${CHART_START_X + pointIndex * CHART_STEP_X},${CHART_BASE_Y - point.value * MOISTURE_CHART_SCALE_Y}`,
+                      )
                       .join(" ")}
                     stroke="#3b82f6"
                     strokeLinecap="round"
                     strokeWidth="2.5"
                   />
-                  {moisturePoints.map((p, idx) => (
+                  {moisturePoints.map((point, pointIndex) => (
                     <circle
-                      key={p.time}
-                      cx={40 + idx * 75}
-                      cy={100 - p.val * 80}
+                      key={point.time}
+                      cx={CHART_START_X + pointIndex * CHART_STEP_X}
+                      cy={CHART_BASE_Y - point.value * MOISTURE_CHART_SCALE_Y}
                       fill="#3b82f6"
                       r="3.5"
                     />
@@ -288,19 +334,25 @@ export function SensorDetailModal({
                     fill="none"
                     points={tiltPoints
                       .map(
-                        (p, idx) =>
-                          `${40 + idx * 75},${100 - Math.min(p.val * 25, 80)}`,
+                        (point, pointIndex) =>
+                          `${CHART_START_X + pointIndex * CHART_STEP_X},${CHART_BASE_Y - Math.min(point.value * TILT_CHART_SCALE_Y, TILT_CHART_MAX_OFFSET_Y)}`,
                       )
                       .join(" ")}
                     stroke="#f59e0b"
                     strokeLinecap="round"
                     strokeWidth="2.5"
                   />
-                  {tiltPoints.map((p, idx) => (
+                  {tiltPoints.map((point, pointIndex) => (
                     <circle
-                      key={p.time}
-                      cx={40 + idx * 75}
-                      cy={100 - Math.min(p.val * 25, 80)}
+                      key={point.time}
+                      cx={CHART_START_X + pointIndex * CHART_STEP_X}
+                      cy={
+                        CHART_BASE_Y -
+                        Math.min(
+                          point.value * TILT_CHART_SCALE_Y,
+                          TILT_CHART_MAX_OFFSET_Y,
+                        )
+                      }
                       fill="#f59e0b"
                       r="3.5"
                     />

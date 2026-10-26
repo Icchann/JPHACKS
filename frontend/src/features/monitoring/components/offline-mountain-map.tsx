@@ -1,4 +1,11 @@
-import React, { useEffect, useId, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type {
   DemoSensor,
@@ -9,6 +16,27 @@ import type {
 } from "../types";
 import styles from "./offline-mountain-map.module.css";
 
+export type MountainBounds = {
+  minLat: number;
+  maxLat: number;
+  minLon: number;
+  maxLon: number;
+};
+
+export type MountainBoundsInput =
+  | MountainBounds
+  | {
+      minLatitude?: number;
+      maxLatitude?: number;
+      minLongitude?: number;
+      maxLongitude?: number;
+    };
+
+export type OfflineMapFocusRequest = {
+  sensorId: string;
+  token: number;
+};
+
 type OfflineMountainMapProps = {
   sensors: DemoSensor[];
   selectedSensorId?: string | null;
@@ -18,12 +46,75 @@ type OfflineMountainMapProps = {
   layerStates: Record<MapLayerId, LayerVisibility>;
   mountainName?: string;
   mapImageUrl?: string | null;
+  mountainBounds?: MountainBoundsInput | null;
+  resetViewRequest?: number;
+  focusRequest?: OfflineMapFocusRequest | null;
   className?: string;
 };
 
 const SVG_WIDTH = 1000;
 const SVG_HEIGHT = 680;
 const PADDING = 80;
+
+// 拡大・縮小倍率およびホイール操作のしきい値定数
+const DEFAULT_ZOOM_LEVEL = 1.0;
+const FOCUS_ZOOM_LEVEL = 1.35;
+const MIN_WHEEL_ZOOM_LEVEL = 0.7;
+const MAX_WHEEL_ZOOM_LEVEL = 2.5;
+const MIN_BUTTON_ZOOM_LEVEL = 0.8;
+const MAX_BUTTON_ZOOM_LEVEL = 2.0;
+const BUTTON_ZOOM_STEP = 0.2;
+const WHEEL_ZOOM_IN_FACTOR = 1.1;
+const WHEEL_ZOOM_OUT_FACTOR = 0.9;
+
+// レイヤーの不透明度および背景画像の調整定数
+const LAYER_OPACITY_VISIBLE = 1.0;
+const LAYER_OPACITY_FADED = 0.25;
+const LAYER_OPACITY_HIDDEN = 0;
+const GROUND_OVERLAY_OPACITY = 0.92;
+const MIN_GROUND_OVERLAY_DIMENSION = 10;
+const FOREST_ZONE_OPACITY = 0.85;
+
+// センサーピンおよび銘板・アラートバッジの描画定数
+const SENSOR_HIT_AREA_RADIUS = 26;
+const SENSOR_MARKER_PIN_RADIUS = 17;
+const OFFLINE_BADGE_OFFSET = 13;
+const OFFLINE_BADGE_RADIUS = 6.5;
+const CODE_TAG_CHAR_WIDTH = 8;
+const CODE_TAG_HORIZONTAL_PADDING = 10;
+const CODE_TAG_HEIGHT = 16;
+const CODE_TAG_BORDER_RADIUS = 3;
+const CODE_TAG_OFFSET_Y = 20;
+const CODE_TAG_TEXT_OFFSET_Y = 28;
+const ALERT_PILL_OFFSET_Y = -26;
+const ALERT_PILL_WIDTH = 92;
+const ALERT_PILL_HEIGHT = 18;
+const ALERT_PILL_BORDER_RADIUS = 4;
+const DANGER_TILT_DISPLAY_THRESHOLD = 5.0;
+const PERCENTAGE_MULTIPLIER = 100;
+const DEFAULT_ELEVATION_METERS = 400;
+const FACILITY_POINT_RADIUS = 13;
+const FACILITY_LABEL_OFFSET_Y = 23;
+const PATH_LABEL_OFFSET = 6;
+const MIN_COORDINATE_SPAN = 0.0001;
+
+// センサー配列の増減で地図が伸縮しないよう、工区の基準バウンディングボックスを固定定義する（案C: Issue #33）
+const DEFAULT_MOUNTAIN_BOUNDS: MountainBounds = {
+  minLat: 34.985,
+  maxLat: 35.022,
+  minLon: 136.982,
+  maxLon: 137.032,
+};
+
+// 工区外・現地仮設スロット領域のレイアウト定数
+const OFF_SITE_SLOT_START_X = 180;
+const OFF_SITE_SLOT_STEP_X = 140;
+const OFF_SITE_SLOT_Y = SVG_HEIGHT - 48;
+const OFF_SITE_BAR_X = 24;
+const OFF_SITE_BAR_Y = SVG_HEIGHT - 84;
+const OFF_SITE_BAR_WIDTH = SVG_WIDTH - 48;
+const OFF_SITE_BAR_HEIGHT = 72;
+const OFF_SITE_BAR_BORDER_RADIUS = 8;
 
 // 林業現場の森林基本図・等高線地形図に即した、完全オフライン山林マップ
 export function OfflineMountainMap({
@@ -35,6 +126,9 @@ export function OfflineMountainMap({
   layerStates,
   mountainName = "白神山地 第3工区",
   mapImageUrl,
+  mountainBounds,
+  resetViewRequest = 0,
+  focusRequest = null,
   className,
 }: OfflineMountainMapProps) {
   const [hoveredSensor, setHoveredSensor] = useState<DemoSensor | null>(null);
@@ -42,7 +136,7 @@ export function OfflineMountainMap({
     x: number;
     y: number;
   } | null>(null);
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [zoomLevel, setZoomLevel] = useState<number>(DEFAULT_ZOOM_LEVEL);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({
     x: 0,
     y: 0,
@@ -55,9 +149,22 @@ export function OfflineMountainMap({
   // Windows等で地図エリアを画面いっぱいに広げる全体表示（拡大）ステート (Issue #12)
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
+  // Reactの合成onWheelイベントはブラウザによってpassive扱いとなりpreventDefaultが効かない場合があるため、
+  // DOM要素への直接リスナー登録で確実にスクロール分離（Cooperative Gesture）を制御する
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
+  const handledResetViewRequestRef = useRef<number>(resetViewRequest);
+  const handledFocusTokenRef = useRef<number | null>(
+    focusRequest?.token ?? null,
+  );
+
+  const resetView = useCallback(() => {
+    setZoomLevel(DEFAULT_ZOOM_LEVEL);
+    setPanOffset({ x: 0, y: 0 });
+  }, []);
+
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isExpanded) {
+    const handleKeyDown = (keyboardEvent: KeyboardEvent) => {
+      if (keyboardEvent.key === "Escape" && isExpanded) {
         setIsExpanded(false);
       }
     };
@@ -65,21 +172,83 @@ export function OfflineMountainMap({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isExpanded]);
 
+  // ページ縦スクロール時にマウスが地図上を通過しても勝手にパン・ズームしないよう、
+  // 通常表示時は Ctrl/Meta + ホイールのみをズームとして受け付け、全体表示時は背景スクロールを遮断する
+  useEffect(() => {
+    const containerElement = canvasContainerRef.current;
+    if (!containerElement) {
+      return;
+    }
+
+    const handleNativeWheel = (wheelEvent: WheelEvent) => {
+      const isZoomGesture = wheelEvent.ctrlKey || wheelEvent.metaKey;
+
+      if (!isExpanded) {
+        if (!isZoomGesture) {
+          // 通常スクロール時は地図側で何もしないことで、ブラウザ標準のページ縦スクロールを妨げない
+          return;
+        }
+        wheelEvent.preventDefault();
+        wheelEvent.stopPropagation();
+        const zoomFactor =
+          wheelEvent.deltaY < 0 ? WHEEL_ZOOM_IN_FACTOR : WHEEL_ZOOM_OUT_FACTOR;
+        setZoomLevel((previousZoom) =>
+          Math.min(
+            Math.max(previousZoom * zoomFactor, MIN_WHEEL_ZOOM_LEVEL),
+            MAX_WHEEL_ZOOM_LEVEL,
+          ),
+        );
+        return;
+      }
+
+      // 全体表示中は背面のページスクロールを完全に遮断し、ホイール操作を地図操作に割り当てる
+      wheelEvent.preventDefault();
+      wheelEvent.stopPropagation();
+      if (isZoomGesture) {
+        const zoomFactor =
+          wheelEvent.deltaY < 0 ? WHEEL_ZOOM_IN_FACTOR : WHEEL_ZOOM_OUT_FACTOR;
+        setZoomLevel((previousZoom) =>
+          Math.min(
+            Math.max(previousZoom * zoomFactor, MIN_WHEEL_ZOOM_LEVEL),
+            MAX_WHEEL_ZOOM_LEVEL,
+          ),
+        );
+      } else {
+        setPanOffset((previousOffset) => ({
+          x: previousOffset.x - wheelEvent.deltaX,
+          y: previousOffset.y - wheelEvent.deltaY,
+        }));
+      }
+    };
+
+    containerElement.addEventListener("wheel", handleNativeWheel, {
+      passive: false,
+    });
+    return () => {
+      containerElement.removeEventListener("wheel", handleNativeWheel);
+    };
+  }, [isExpanded]);
+
   // 地図のドラッグ＆ドロップによる自由なスクロール（パン移動）
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (mouseEvent: React.MouseEvent) => {
     // センサーピンクリック時はドラッグ移動を開始しない
-    if ((e.target as HTMLElement).closest(`.${styles.sensorMarkerGroup}`)) {
+    if (
+      (mouseEvent.target as HTMLElement).closest(`.${styles.sensorMarkerGroup}`)
+    ) {
       return;
     }
     setIsDragging(true);
-    setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    setDragStart({
+      x: mouseEvent.clientX - panOffset.x,
+      y: mouseEvent.clientY - panOffset.y,
+    });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handleMouseMove = (mouseEvent: React.MouseEvent) => {
     if (!isDragging) return;
     setPanOffset({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y,
+      x: mouseEvent.clientX - dragStart.x,
+      y: mouseEvent.clientY - dragStart.y,
     });
   };
 
@@ -87,36 +256,24 @@ export function OfflineMountainMap({
     setIsDragging(false);
   };
 
-  // マウスホイールやトラックパッドによるスクロール・パン移動
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      setZoomLevel((prev) => Math.min(Math.max(prev * zoomFactor, 0.7), 2.5));
-    } else {
-      setPanOffset((prev) => ({
-        x: prev.x - e.deltaX,
-        y: prev.y - e.deltaY,
-      }));
-    }
-  };
-
   // タッチ操作（タブレット・スマホ・タッチ対応PC）でのスクロール対応
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 1 && e.touches[0]) {
+  const handleTouchStart = (touchEvent: React.TouchEvent) => {
+    const primaryTouch = touchEvent.touches[0];
+    if (touchEvent.touches.length === 1 && primaryTouch) {
       setIsDragging(true);
       setDragStart({
-        x: e.touches[0].clientX - panOffset.x,
-        y: e.touches[0].clientY - panOffset.y,
+        x: primaryTouch.clientX - panOffset.x,
+        y: primaryTouch.clientY - panOffset.y,
       });
     }
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging || e.touches.length !== 1 || !e.touches[0]) return;
+  const handleTouchMove = (touchEvent: React.TouchEvent) => {
+    const primaryTouch = touchEvent.touches[0];
+    if (!isDragging || touchEvent.touches.length !== 1 || !primaryTouch) return;
     setPanOffset({
-      x: e.touches[0].clientX - dragStart.x,
-      y: e.touches[0].clientY - dragStart.y,
+      x: primaryTouch.clientX - dragStart.x,
+      y: primaryTouch.clientY - dragStart.y,
     });
   };
 
@@ -124,71 +281,157 @@ export function OfflineMountainMap({
     setIsDragging(false);
   };
 
-  const resetView = () => {
-    setZoomLevel(1);
-    setPanOffset({ x: 0, y: 0 });
-  };
   const uniqueId = useId();
 
-  // 全センサーとオーバーレイから緯度経度のバウンディングボックスを算出
-  const bounds = useMemo(() => {
-    const allLats = [
-      ...sensors.map((s) => s.latitude),
-      ...overlayPoints.map((p) => p.latitude),
-      ...overlayPaths.flatMap((p) => p.coordinates.map((c) => c.latitude)),
-    ];
-    const allLons = [
-      ...sensors.map((s) => s.longitude),
-      ...overlayPoints.map((p) => p.longitude),
-      ...overlayPaths.flatMap((p) => p.coordinates.map((c) => c.longitude)),
-    ];
+  // 検索フィルタや遠方機体の追加で背景図や既存ピンが1ピクセルもズレないよう、
+  // センサー配列に依存しない工区固定のバウンディングボックスを算出する（案C: Issue #33）
+  const fixedBounds = useMemo<MountainBounds>(() => {
+    if (mountainBounds) {
+      const candidateMinLat =
+        "minLat" in mountainBounds
+          ? mountainBounds.minLat
+          : mountainBounds.minLatitude;
+      const candidateMaxLat =
+        "maxLat" in mountainBounds
+          ? mountainBounds.maxLat
+          : mountainBounds.maxLatitude;
+      const candidateMinLon =
+        "minLon" in mountainBounds
+          ? mountainBounds.minLon
+          : mountainBounds.minLongitude;
+      const candidateMaxLon =
+        "maxLon" in mountainBounds
+          ? mountainBounds.maxLon
+          : mountainBounds.maxLongitude;
 
-    if (allLats.length === 0 || allLons.length === 0) {
-      return { minLat: 34.99, maxLat: 35.01, minLon: 136.99, maxLon: 137.02 };
+      if (
+        candidateMinLat !== undefined &&
+        candidateMaxLat !== undefined &&
+        candidateMinLon !== undefined &&
+        candidateMaxLon !== undefined &&
+        candidateMaxLat > candidateMinLat &&
+        candidateMaxLon > candidateMinLon
+      ) {
+        return {
+          minLat: candidateMinLat,
+          maxLat: candidateMaxLat,
+          minLon: candidateMinLon,
+          maxLon: candidateMaxLon,
+        };
+      }
     }
-
-    const minLat = Math.min(...allLats);
-    const maxLat = Math.max(...allLats);
-    const minLon = Math.min(...allLons);
-    const maxLon = Math.max(...allLons);
-
-    // 外周に18%のマージンを設けて端が見切れないようにする
-    const latSpan = Math.max(maxLat - minLat, 0.002);
-    const lonSpan = Math.max(maxLon - minLon, 0.002);
-    const latMargin = latSpan * 0.18;
-    const lonMargin = lonSpan * 0.18;
-
-    return {
-      minLat: minLat - latMargin,
-      maxLat: maxLat + latMargin,
-      minLon: minLon - lonMargin,
-      maxLon: maxLon + lonMargin,
-    };
-  }, [sensors, overlayPoints, overlayPaths]);
+    return DEFAULT_MOUNTAIN_BOUNDS;
+  }, [mountainBounds]);
 
   // 緯度経度をSVG直交座標へ正規化変換（北が上＝緯度大がY小）
   const project = useMemo(() => {
-    const latRange = Math.max(bounds.maxLat - bounds.minLat, 0.0001);
-    const lonRange = Math.max(bounds.maxLon - bounds.minLon, 0.0001);
+    const latitudeSpan = Math.max(
+      fixedBounds.maxLat - fixedBounds.minLat,
+      MIN_COORDINATE_SPAN,
+    );
+    const longitudeSpan = Math.max(
+      fixedBounds.maxLon - fixedBounds.minLon,
+      MIN_COORDINATE_SPAN,
+    );
 
-    return (lat: number, lon: number) => {
-      const x =
+    return (latitude: number, longitude: number) => {
+      const projectedX =
         PADDING +
-        ((lon - bounds.minLon) / lonRange) * (SVG_WIDTH - PADDING * 2);
-      const y =
+        ((longitude - fixedBounds.minLon) / longitudeSpan) *
+          (SVG_WIDTH - PADDING * 2);
+      const projectedY =
         SVG_HEIGHT -
         PADDING -
-        ((lat - bounds.minLat) / latRange) * (SVG_HEIGHT - PADDING * 2);
-      return { x, y };
+        ((latitude - fixedBounds.minLat) / latitudeSpan) *
+          (SVG_HEIGHT - PADDING * 2);
+      return { x: projectedX, y: projectedY };
     };
-  }, [bounds]);
+  }, [fixedBounds]);
+
+  // 各センサーが固定工区BBox内に収まっているか判定し、工区外の機体は下部の仮設スロットへ整列配置する
+  const positionedSensors = useMemo(() => {
+    const offSiteSensorIds = sensors
+      .filter(
+        (sensor) =>
+          !(
+            sensor.latitude >= fixedBounds.minLat &&
+            sensor.latitude <= fixedBounds.maxLat &&
+            sensor.longitude >= fixedBounds.minLon &&
+            sensor.longitude <= fixedBounds.maxLon
+          ),
+      )
+      .map((sensor) => sensor.id);
+
+    return sensors.map((sensor) => {
+      const offSiteSlotIndex = offSiteSensorIds.indexOf(sensor.id);
+      if (offSiteSlotIndex === -1) {
+        return {
+          sensor,
+          position: project(sensor.latitude, sensor.longitude),
+          isOffSite: false,
+        };
+      }
+
+      const slotPosition = {
+        x: OFF_SITE_SLOT_START_X + offSiteSlotIndex * OFF_SITE_SLOT_STEP_X,
+        y: OFF_SITE_SLOT_Y,
+      };
+      return {
+        sensor,
+        position: slotPosition,
+        isOffSite: true,
+      };
+    });
+  }, [sensors, fixedBounds, project]);
+
+  const hasOffSiteSensors = useMemo(
+    () => positionedSensors.some((item) => item.isOffSite),
+    [positionedSensors],
+  );
+
+  // 外部からの全体表示リセット要求（resetViewRequest）に応答して倍率とパン位置を初期化する
+  useEffect(() => {
+    if (
+      resetViewRequest === 0 ||
+      resetViewRequest === handledResetViewRequestRef.current
+    ) {
+      return;
+    }
+    handledResetViewRequestRef.current = resetViewRequest;
+    const timerId = window.setTimeout(() => {
+      resetView();
+    }, 0);
+    return () => window.clearTimeout(timerId);
+  }, [resetViewRequest, resetView]);
+
+  // 外部からのセンサーフォーカス要求（focusRequest）に応答して対象ピンが中央付近に来るよう移動する
+  useEffect(() => {
+    if (!focusRequest || focusRequest.token === handledFocusTokenRef.current) {
+      return;
+    }
+    const targetPositionedSensor = positionedSensors.find(
+      (item) => item.sensor.id === focusRequest.sensorId,
+    );
+    if (!targetPositionedSensor) {
+      return;
+    }
+    handledFocusTokenRef.current = focusRequest.token;
+    const timerId = window.setTimeout(() => {
+      setZoomLevel(FOCUS_ZOOM_LEVEL);
+      setPanOffset({
+        x: SVG_WIDTH / 2 - targetPositionedSensor.position.x,
+        y: SVG_HEIGHT / 2 - targetPositionedSensor.position.y,
+      });
+    }, 0);
+    return () => window.clearTimeout(timerId);
+  }, [focusRequest, positionedSensors]);
 
   // レイヤー別の不透明度取得
   const getLayerOpacity = (layerId: MapLayerId): number => {
-    const state = layerStates[layerId] ?? "visible";
-    if (state === "hidden") return 0;
-    if (state === "faded") return 0.25;
-    return 1;
+    const visibilityState = layerStates[layerId] ?? "visible";
+    if (visibilityState === "hidden") return LAYER_OPACITY_HIDDEN;
+    if (visibilityState === "faded") return LAYER_OPACITY_FADED;
+    return LAYER_OPACITY_VISIBLE;
   };
 
   return (
@@ -237,7 +480,14 @@ export function OfflineMountainMap({
               data-sanmou-button="secondary"
               aria-label="拡大"
               className={styles.zoomButton}
-              onClick={() => setZoomLevel((z) => Math.min(z + 0.2, 2.0))}
+              onClick={() =>
+                setZoomLevel((previousZoom) =>
+                  Math.min(
+                    previousZoom + BUTTON_ZOOM_STEP,
+                    MAX_BUTTON_ZOOM_LEVEL,
+                  ),
+                )
+              }
               type="button"
             >
               ＋ 拡大
@@ -256,7 +506,14 @@ export function OfflineMountainMap({
               data-sanmou-button="secondary"
               aria-label="縮小"
               className={styles.zoomButton}
-              onClick={() => setZoomLevel((z) => Math.max(z - 0.2, 0.8))}
+              onClick={() =>
+                setZoomLevel((previousZoom) =>
+                  Math.max(
+                    previousZoom - BUTTON_ZOOM_STEP,
+                    MIN_BUTTON_ZOOM_LEVEL,
+                  ),
+                )
+              }
               type="button"
             >
               ー 縮小
@@ -265,12 +522,12 @@ export function OfflineMountainMap({
         </div>
       </header>
       <div
+        ref={canvasContainerRef}
         className={`${styles.canvasContainer} ${isDragging ? styles.dragging : ""}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -313,25 +570,25 @@ export function OfflineMountainMap({
             <image
               className={styles.groundOverlayImage}
               height={Math.max(
-                project(bounds.minLat, bounds.maxLon).y -
-                  project(bounds.maxLat, bounds.minLon).y,
-                10,
+                project(fixedBounds.minLat, fixedBounds.maxLon).y -
+                  project(fixedBounds.maxLat, fixedBounds.minLon).y,
+                MIN_GROUND_OVERLAY_DIMENSION,
               )}
               href={mapImageUrl}
-              opacity={0.92}
+              opacity={GROUND_OVERLAY_OPACITY}
               preserveAspectRatio="none"
               width={Math.max(
-                project(bounds.minLat, bounds.maxLon).x -
-                  project(bounds.maxLat, bounds.minLon).x,
-                10,
+                project(fixedBounds.minLat, fixedBounds.maxLon).x -
+                  project(fixedBounds.maxLat, fixedBounds.minLon).x,
+                MIN_GROUND_OVERLAY_DIMENSION,
               )}
-              x={project(bounds.maxLat, bounds.minLon).x}
-              y={project(bounds.maxLat, bounds.minLon).y}
+              x={project(fixedBounds.maxLat, fixedBounds.minLon).x}
+              y={project(fixedBounds.maxLat, fixedBounds.minLon).y}
             />
           )}
 
           {/* 森林区画ポリゴン（スギ・ヒノキ針葉樹林帯、天然生広葉樹林帯） */}
-          <g className={styles.forestZones} opacity={0.85}>
+          <g className={styles.forestZones} opacity={FOREST_ZONE_OPACITY}>
             {/* スギ林区画 */}
             <polygon
               className={styles.coniferZone}
@@ -445,22 +702,30 @@ export function OfflineMountainMap({
           </g>
 
           {/* 現場オーバーレイ線（林道、作業道、私有林境界線） */}
-          {overlayPaths.map((path) => {
-            const opacity = getLayerOpacity(path.layerId);
-            if (opacity === 0) return null;
+          {overlayPaths.map((overlayPath) => {
+            const opacity = getLayerOpacity(overlayPath.layerId);
+            if (opacity === LAYER_OPACITY_HIDDEN) return null;
 
-            const pointsString = path.coordinates
-              .map((c) => {
-                const pt = project(c.latitude, c.longitude);
-                return `${pt.x},${pt.y}`;
+            const pointsString = overlayPath.coordinates
+              .map((coordinate) => {
+                const projectedPoint = project(
+                  coordinate.latitude,
+                  coordinate.longitude,
+                );
+                return `${projectedPoint.x},${projectedPoint.y}`;
               })
               .join(" ");
 
-            const isBoundary = path.subType === "private_border";
-            const isRoad = path.subType === "work_road";
+            const isBoundary = overlayPath.subType === "private_border";
+            const isRoad = overlayPath.subType === "work_road";
+            const firstCoordinate = overlayPath.coordinates[0];
 
             return (
-              <g key={path.id} className={styles.pathGroup} opacity={opacity}>
+              <g
+                key={overlayPath.id}
+                className={styles.pathGroup}
+                opacity={opacity}
+              >
                 <polyline
                   className={
                     isBoundary
@@ -472,23 +737,23 @@ export function OfflineMountainMap({
                   fill="none"
                   points={pointsString}
                 />
-                {path.coordinates[0] && (
+                {firstCoordinate && (
                   <text
                     className={styles.pathNameText}
                     x={
                       project(
-                        path.coordinates[0].latitude,
-                        path.coordinates[0].longitude,
-                      ).x + 6
+                        firstCoordinate.latitude,
+                        firstCoordinate.longitude,
+                      ).x + PATH_LABEL_OFFSET
                     }
                     y={
                       project(
-                        path.coordinates[0].latitude,
-                        path.coordinates[0].longitude,
-                      ).y - 6
+                        firstCoordinate.latitude,
+                        firstCoordinate.longitude,
+                      ).y - PATH_LABEL_OFFSET
                     }
                   >
-                    {path.name}
+                    {overlayPath.name}
                   </text>
                 )}
               </g>
@@ -496,23 +761,28 @@ export function OfflineMountainMap({
           })}
 
           {/* 現場オーバーレイ点（休憩詰所、湧水、危険箇所） */}
-          {overlayPoints.map((pt) => {
-            const opacity = getLayerOpacity(pt.layerId);
-            if (opacity === 0) return null;
+          {overlayPoints.map((overlayPoint) => {
+            const opacity = getLayerOpacity(overlayPoint.layerId);
+            if (opacity === LAYER_OPACITY_HIDDEN) return null;
 
-            const pos = project(pt.latitude, pt.longitude);
-            const isRest = pt.layerId === "rest_point";
+            const projectedPosition = project(
+              overlayPoint.latitude,
+              overlayPoint.longitude,
+            );
+            const isRestPoint = overlayPoint.layerId === "rest_point";
 
             return (
               <g
-                key={pt.id}
+                key={overlayPoint.id}
                 className={styles.facilityPointGroup}
                 opacity={opacity}
-                transform={`translate(${pos.x}, ${pos.y})`}
+                transform={`translate(${projectedPosition.x}, ${projectedPosition.y})`}
               >
                 <circle
-                  className={isRest ? styles.restPointBg : styles.hazardPointBg}
-                  r="13"
+                  className={
+                    isRestPoint ? styles.restPointBg : styles.hazardPointBg
+                  }
+                  r={FACILITY_POINT_RADIUS}
                 />
                 <text
                   className={styles.facilityIcon}
@@ -520,29 +790,57 @@ export function OfflineMountainMap({
                   textAnchor="middle"
                   y="1"
                 >
-                  {isRest ? (pt.subType === "hut" ? "⌂" : "💧") : "▲"}
+                  {isRestPoint
+                    ? overlayPoint.subType === "hut"
+                      ? "⌂"
+                      : "💧"
+                    : "▲"}
                 </text>
                 <text
                   className={styles.facilityLabel}
                   textAnchor="middle"
-                  y="23"
+                  y={FACILITY_LABEL_OFFSET_Y}
                 >
-                  {pt.name}
+                  {overlayPoint.name}
                 </text>
               </g>
             );
           })}
 
+          {/* 工区外（遠方・現地仮設）センサーが存在する場合の専用スロット枠（案C: Issue #33） */}
+          {getLayerOpacity("sensor") > LAYER_OPACITY_HIDDEN &&
+            hasOffSiteSensors && (
+              <g className={styles.offSiteSlotContainer}>
+                <rect
+                  className={styles.offSiteSlotRect}
+                  height={OFF_SITE_BAR_HEIGHT}
+                  rx={OFF_SITE_BAR_BORDER_RADIUS}
+                  width={OFF_SITE_BAR_WIDTH}
+                  x={OFF_SITE_BAR_X}
+                  y={OFF_SITE_BAR_Y}
+                />
+                <text
+                  className={styles.offSiteSlotTitle}
+                  x={OFF_SITE_BAR_X + 14}
+                  y={OFF_SITE_BAR_Y + 20}
+                >
+                  📍 工区外・現地仮設スロット（参考配置）
+                </text>
+              </g>
+            )}
+
           {/* センサーマーカー（森林測量標・杭風デザイン） */}
-          {getLayerOpacity("sensor") > 0 &&
-            sensors.map((sensor) => {
-              const pos = project(sensor.latitude, sensor.longitude);
+          {getLayerOpacity("sensor") > LAYER_OPACITY_HIDDEN &&
+            positionedSensors.map(({ sensor, position }) => {
               const isSelected = selectedSensorId === sensor.id;
               const isDanger = sensor.observationSeverity === "danger";
               const isCaution = sensor.observationSeverity === "caution";
               const isTree = sensor.nodeType === "tree";
               const isOffline = sensor.communicationStatus === "offline";
               const sensorOpacity = getLayerOpacity("sensor");
+              const codeTagWidth =
+                sensor.sensorCode.length * CODE_TAG_CHAR_WIDTH +
+                CODE_TAG_HORIZONTAL_PADDING;
 
               return (
                 <g
@@ -552,24 +850,27 @@ export function OfflineMountainMap({
                   onClick={() => onSelectSensor(sensor)}
                   onMouseEnter={() => {
                     setHoveredSensor(sensor);
-                    setHoverPosition(pos);
+                    setHoverPosition(position);
                   }}
                   onMouseLeave={() => setHoveredSensor(null)}
                   role="button"
                   tabIndex={0}
-                  transform={`translate(${pos.x}, ${pos.y})`}
+                  transform={`translate(${position.x}, ${position.y})`}
                 >
                   {/*
                     【重要】ホバーのバグ防止（無限ループ・位置ズレ防止）:
                     ヒット判定円（hitArea）は固定サイズで絶対に動かさず、
                     装飾要素すべてに pointer-events: none を適用してマウス奪い合いを防ぎます。
                   */}
-                  <circle className={styles.hitArea} r="26" />
+                  <circle
+                    className={styles.hitArea}
+                    r={SENSOR_HIT_AREA_RADIUS}
+                  />
 
                   {/* 測量標ピンの本体円 */}
                   <circle
                     className={`${styles.markerPin} ${isTree ? styles.treePin : styles.slopePin} ${styles[sensor.observationSeverity]}`}
-                    r="17"
+                    r={SENSOR_MARKER_PIN_RADIUS}
                   />
 
                   {/* 樹木 🌲 vs 斜面 ⛰️ のピクトグラム */}
@@ -584,8 +885,13 @@ export function OfflineMountainMap({
 
                   {/* 通信断（offline）インジケーターバッジ */}
                   {isOffline && (
-                    <g transform="translate(13, -13)">
-                      <circle className={styles.offlineBadgeBg} r="6.5" />
+                    <g
+                      transform={`translate(${OFFLINE_BADGE_OFFSET}, -${OFFLINE_BADGE_OFFSET})`}
+                    >
+                      <circle
+                        className={styles.offlineBadgeBg}
+                        r={OFFLINE_BADGE_RADIUS}
+                      />
                       <text
                         className={styles.offlineBadgeText}
                         dominantBaseline="central"
@@ -600,17 +906,17 @@ export function OfflineMountainMap({
                   {/* センサーコード銘板（名札） */}
                   <rect
                     className={styles.codeTagRect}
-                    height="16"
-                    rx="3"
-                    width={sensor.sensorCode.length * 8 + 10}
-                    x={-(sensor.sensorCode.length * 8 + 10) / 2}
-                    y="20"
+                    height={CODE_TAG_HEIGHT}
+                    rx={CODE_TAG_BORDER_RADIUS}
+                    width={codeTagWidth}
+                    x={-codeTagWidth / 2}
+                    y={CODE_TAG_OFFSET_Y}
                   />
                   <text
                     className={styles.codeTagText}
                     dominantBaseline="central"
                     textAnchor="middle"
-                    y="28"
+                    y={CODE_TAG_TEXT_OFFSET_Y}
                   >
                     {sensor.sensorCode}
                   </text>
@@ -619,7 +925,7 @@ export function OfflineMountainMap({
                   {(isDanger || isCaution) && (
                     <g
                       className={styles.alertFlagGroup}
-                      transform="translate(0, -26)"
+                      transform={`translate(0, ${ALERT_PILL_OFFSET_Y})`}
                     >
                       <rect
                         className={
@@ -627,11 +933,11 @@ export function OfflineMountainMap({
                             ? styles.dangerAlertPill
                             : styles.cautionAlertPill
                         }
-                        height="18"
-                        rx="4"
-                        width="92"
-                        x="-46"
-                        y="-9"
+                        height={ALERT_PILL_HEIGHT}
+                        rx={ALERT_PILL_BORDER_RADIUS}
+                        width={ALERT_PILL_WIDTH}
+                        x={-ALERT_PILL_WIDTH / 2}
+                        y={-ALERT_PILL_HEIGHT / 2}
                       />
                       <text
                         className={styles.alertFlagText}
@@ -641,11 +947,11 @@ export function OfflineMountainMap({
                       >
                         {isDanger ? "⚠️ " : "注意: "}
                         {sensor.tiltValue !== null &&
-                        (sensor.tiltValue >= 5.0 ||
+                        (sensor.tiltValue >= DANGER_TILT_DISPLAY_THRESHOLD ||
                           sensor.soilMoistureValue === null)
                           ? `+${sensor.tiltValue.toFixed(1)}°`
                           : sensor.soilMoistureValue !== null
-                            ? `${(sensor.soilMoistureValue * 100).toFixed(0)}%`
+                            ? `${(sensor.soilMoistureValue * PERCENTAGE_MULTIPLIER).toFixed(0)}%`
                             : `${(sensor.tiltValue ?? 0).toFixed(1)}°`}
                       </text>
                     </g>
@@ -653,61 +959,6 @@ export function OfflineMountainMap({
                 </g>
               );
             })}
-
-          {/* 地図凡例（森林計画図スタイル） */}
-          <g className={styles.mapLegend} transform="translate(20, 520)">
-            <rect
-              className={styles.legendBox}
-              height="140"
-              rx="6"
-              width="180"
-            />
-            <text className={styles.legendHeader} x="12" y="20">
-              凡例（森林基本図）
-            </text>
-            <line
-              className={styles.indexContour}
-              x1="12"
-              x2="36"
-              y1="40"
-              y2="40"
-            />
-            <text className={styles.legendItem} x="44" y="44">
-              計曲線 (50m)
-            </text>
-
-            <line
-              className={styles.intermediateContour}
-              x1="12"
-              x2="36"
-              y1="58"
-              y2="58"
-            />
-            <text className={styles.legendItem} x="44" y="62">
-              主曲線 (10m)
-            </text>
-
-            <line
-              className={styles.streamMain}
-              x1="12"
-              x2="36"
-              y1="76"
-              y2="76"
-            />
-            <text className={styles.legendItem} x="44" y="80">
-              沢・水系
-            </text>
-
-            <line className={styles.roadLine} x1="12" x2="36" y1="94" y2="94" />
-            <text className={styles.legendItem} x="44" y="98">
-              林道・作業道
-            </text>
-
-            <circle cx="24" cy="116" r="6" fill="#1b4332" />
-            <text className={styles.legendItem} x="44" y="120">
-              🌲 樹木 / ⛰️ 斜面
-            </text>
-          </g>
         </svg>
 
         {/* マーカーホバー時の情報ポップアップ */}
@@ -741,7 +992,7 @@ export function OfflineMountainMap({
                 <span className={styles.metricLabel}>土壌水分:</span>
                 <strong className={styles.metricValue}>
                   {hoveredSensor.soilMoistureValue !== null
-                    ? `${(hoveredSensor.soilMoistureValue * 100).toFixed(1)}%`
+                    ? `${(hoveredSensor.soilMoistureValue * PERCENTAGE_MULTIPLIER).toFixed(1)}%`
                     : "未計測"}
                 </strong>
               </div>
@@ -758,7 +1009,7 @@ export function OfflineMountainMap({
             {hoveredSensor.locationNote && (
               <p className={styles.locationNote}>
                 📍 {hoveredSensor.locationNote}（標高:{" "}
-                {hoveredSensor.elevationMeters ?? 400}m）
+                {hoveredSensor.elevationMeters ?? DEFAULT_ELEVATION_METERS}m）
               </p>
             )}
 
@@ -770,6 +1021,35 @@ export function OfflineMountainMap({
           </aside>
         )}
       </div>
+
+      {/* 地図ピンとの重なりやズーム時の巨大化を防ぐため、凡例をSVG外の下部バーとして常設表示する */}
+      <footer
+        aria-label="森林基本図の凡例"
+        className={styles.externalLegendBar}
+      >
+        <div className={styles.legendItemsGroup}>
+          <span className={styles.legendBarItem}>
+            <span className={styles.legendSwatchIndexContour} />
+            計曲線 (50m)
+          </span>
+          <span className={styles.legendBarItem}>
+            <span className={styles.legendSwatchIntermediateContour} />
+            主曲線 (10m)
+          </span>
+          <span className={styles.legendBarItem}>
+            <span className={styles.legendSwatchStream} />
+            沢・水系
+          </span>
+          <span className={styles.legendBarItem}>
+            <span className={styles.legendSwatchRoad} />
+            林道・作業道
+          </span>
+          <span className={styles.legendBarItem}>🌲 樹木 / ⛰️ 斜面</span>
+        </div>
+        <span className={styles.gestureGuideText}>
+          ドラッグで移動 / Ctrl(⌘)+ホイールで拡大縮小
+        </span>
+      </footer>
     </div>
   );
 }

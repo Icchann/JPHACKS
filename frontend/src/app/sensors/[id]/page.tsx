@@ -1,51 +1,76 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { notFound } from "next/navigation";
 
 import type { TestObservationResponse } from "../../../features/dashboard/test-observation-types";
 import { DEMO_SENSORS } from "../../../features/monitoring/demo-data";
+import { evaluateLiveSensorState } from "../../../features/monitoring/evaluate-live-sensor-state";
 import type { DemoObservation } from "../../../features/monitoring/types";
 import {
   type DetailSensor,
   SensorDetail,
 } from "../../../features/sensor-detail/components/sensor-detail";
 import type { TestSensor } from "../../../features/sensor-management/sensor-api-types";
+import type { BaselineData } from "../../api/test-baseline/route";
 
-const ONLINE_THRESHOLD_MS = 60_000;
-const SOIL_RAW_FULL_SCALE = 2000;
-const BATTERY_MIN_MV = 2800;
-const BATTERY_SPAN_MV = 800;
+const DEFAULT_BASELINE_STATE_FILENAME = "sanmou-test-baseline-state.json";
+const OBSERVATION_HISTORY_LIMIT = 100;
 
-function convertTestObservationToDemo(
-  sensorId: string,
-  item: TestObservationResponse["items"][number],
-): DemoObservation {
-  const isZeroAcc = item.ax_mg === 0 && item.ay_mg === 0 && item.az_mg === 0;
-  const soilMoistureValue =
-    item.soil_raw === null || item.soil_raw === -1
-      ? null
-      : Math.min(Math.max(item.soil_raw / SOIL_RAW_FULL_SCALE, 0), 1.0);
-  let tiltValue: number | null = null;
-  if (!isZeroAcc) {
-    const horizontalAcc = Math.sqrt(item.ax_mg ** 2 + item.ay_mg ** 2);
-    tiltValue =
-      Math.round(
-        ((Math.atan2(horizontalAcc, Math.max(Math.abs(item.az_mg), 1)) * 180) /
-          Math.PI) *
-          10,
-      ) / 10;
+function readBaselineForNode(sensorCode: string): BaselineData | null {
+  const globalState = globalThis as unknown as {
+    __sanmouBaselines?: Record<string, BaselineData>;
+  };
+  const configuredPath = process.env.SANMOU_BASELINE_STATE_PATH?.trim();
+  const fileName = configuredPath
+    ? path.basename(configuredPath)
+    : DEFAULT_BASELINE_STATE_FILENAME;
+  const stateFilePath = path.join(os.tmpdir(), fileName);
+  if (fs.existsSync(stateFilePath)) {
+    try {
+      const rawText = fs.readFileSync(stateFilePath, "utf-8");
+      const parsed = JSON.parse(rawText) as {
+        baselines?: Record<string, BaselineData>;
+      };
+      if (parsed.baselines && typeof parsed.baselines === "object") {
+        globalState.__sanmouBaselines = parsed.baselines;
+        return parsed.baselines[sensorCode] ?? null;
+      }
+    } catch {
+      // ファイル読取失敗時はメモリ上のキャッシュへフォールバックする
+    }
   }
 
+  return globalState.__sanmouBaselines?.[sensorCode] ?? null;
+}
+
+function convertTestObservationToDemo(
+  baseSensor: DetailSensor,
+  item: TestObservationResponse["items"][number],
+  baseline: BaselineData | null,
+): DemoObservation {
+  const receivedTimestampMs = Date.parse(item.received_at);
+  const evaluated = evaluateLiveSensorState(
+    baseSensor,
+    item,
+    baseline,
+    Number.isFinite(receivedTimestampMs) ? receivedTimestampMs : Date.now(),
+    false,
+  );
+
   return {
-    sensorId,
+    sensorId: baseSensor.id,
     measuredAt: item.received_at,
-    soilMoistureValue,
-    tiltValue,
-    source: "demo",
+    soilMoistureValue: evaluated.soilMoistureValue,
+    tiltValue: evaluated.tiltValue,
+    source: "device_test",
   };
 }
 
 async function fetchTestSensorDetail(id: string): Promise<{
   sensor: DetailSensor;
   observations: DemoObservation[];
+  isCalibrated: boolean;
 } | null> {
   const testToken = process.env.SANMOU_TEST_API_TOKEN;
   if (!testToken) {
@@ -66,18 +91,31 @@ async function fetchTestSensorDetail(id: string): Promise<{
       return null;
     }
     const testSensor = (await sensorResponse.json()) as TestSensor;
+    const baseline = readBaselineForNode(testSensor.sensor_code);
+
+    const baseSensor: DetailSensor = {
+      id: testSensor.id,
+      sensorCode: testSensor.sensor_code,
+      name: testSensor.name,
+      latitude: testSensor.latitude,
+      longitude: testSensor.longitude,
+      observationSeverity: testSensor.observation_severity,
+      communicationStatus: testSensor.communication_status,
+      deviceFaultStatus: testSensor.device_fault_status,
+      lowBattery: testSensor.low_battery,
+      soilMoistureValue: null,
+      tiltValue: null,
+      batteryPercent: null,
+      lastReceivedAt: testSensor.last_received_at,
+      source: "device_test",
+    };
 
     let observations: DemoObservation[] = [];
-    let latestSoilMoisture: number | null = null;
-    let latestTilt: number | null = null;
-    let latestBatteryPercent: number | null = null;
-    let latestReceivedAt = testSensor.last_received_at;
-    let communicationStatus = testSensor.communication_status;
-    let observationSeverity = testSensor.observation_severity;
+    let evaluatedSensor: DetailSensor = baseSensor;
 
     try {
       const obsResponse = await fetch(
-        `${backendUrl}/test/observations?node_id=${encodeURIComponent(testSensor.sensor_code)}&limit=100`,
+        `${backendUrl}/test/observations?node_id=${encodeURIComponent(testSensor.sensor_code)}&limit=${OBSERVATION_HISTORY_LIMIT}`,
         {
           cache: "no-store",
           headers: { "X-Test-Token": testToken },
@@ -86,62 +124,31 @@ async function fetchTestSensorDetail(id: string): Promise<{
       if (obsResponse.ok) {
         const obsBody = (await obsResponse.json()) as TestObservationResponse;
         observations = obsBody.items.map((item) =>
-          convertTestObservationToDemo(testSensor.id, item),
+          convertTestObservationToDemo(baseSensor, item, baseline),
         );
-        const latestItem = obsBody.items.at(-1);
-        const latestConverted = observations.at(-1);
-        if (latestItem && latestConverted) {
-          latestSoilMoisture = latestConverted.soilMoistureValue;
-          latestTilt = latestConverted.tiltValue;
-          latestReceivedAt = latestItem.received_at;
-          latestBatteryPercent =
-            latestItem.battery_mv === null || latestItem.battery_mv === -1
-              ? null
-              : Math.min(
-                  Math.max(
-                    Math.round(
-                      ((latestItem.battery_mv - BATTERY_MIN_MV) /
-                        BATTERY_SPAN_MV) *
-                        100,
-                    ),
-                    0,
-                  ),
-                  100,
-                );
-          const receivedEpoch = Date.parse(latestItem.received_at);
-          const refreshedEpoch = Date.parse(obsBody.refreshed_at);
-          const isFresh =
-            Number.isFinite(receivedEpoch) &&
-            Number.isFinite(refreshedEpoch) &&
-            refreshedEpoch - receivedEpoch < ONLINE_THRESHOLD_MS;
-          communicationStatus = isFresh ? "online" : "offline";
-          if (observationSeverity === "unknown") {
-            observationSeverity = "normal";
-          }
-        }
+        const latestItem = obsBody.items.at(-1) ?? null;
+        const refreshedEpoch = Date.parse(obsBody.refreshed_at);
+        const currentTimestampMs = Number.isFinite(refreshedEpoch)
+          ? refreshedEpoch
+          : Date.now();
+        // 地図・台帳画面と同一の判定関数を用い、基準未設定や未観測の unknown を normal に書き換えない（Issue #28）
+        evaluatedSensor = evaluateLiveSensorState(
+          baseSensor,
+          latestItem,
+          baseline,
+          currentTimestampMs,
+          false,
+        );
       }
     } catch {
       // 観測CSVが未作成・取得不能でも台帳情報だけで詳細画面を表示します。
     }
 
-    const sensor: DetailSensor = {
-      id: testSensor.id,
-      sensorCode: testSensor.sensor_code,
-      name: testSensor.name,
-      latitude: testSensor.latitude,
-      longitude: testSensor.longitude,
-      observationSeverity,
-      communicationStatus,
-      deviceFaultStatus: testSensor.device_fault_status,
-      lowBattery: testSensor.low_battery,
-      soilMoistureValue: latestSoilMoisture,
-      tiltValue: latestTilt,
-      batteryPercent: latestBatteryPercent,
-      lastReceivedAt: latestReceivedAt,
-      source: "device_test",
+    return {
+      sensor: evaluatedSensor,
+      observations,
+      isCalibrated: Boolean(baseline),
     };
-
-    return { sensor, observations };
   } catch {
     return null;
   }
@@ -166,6 +173,7 @@ export default async function SensorDetailPage({
       return (
         <SensorDetail
           initialObservations={testDetail.observations}
+          isCalibrated={testDetail.isCalibrated}
           returnPath={returnPath}
           sensor={testDetail.sensor}
         />

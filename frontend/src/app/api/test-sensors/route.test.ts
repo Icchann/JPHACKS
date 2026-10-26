@@ -109,4 +109,61 @@ describe("test sensors proxy", () => {
     );
     expect(response.status).toBe(200);
   });
+
+  it("SANMOU_OPERATOR_TOKEN設定時にトークンなしの変更リクエストを401で拒否する", async () => {
+    vi.stubEnv("SANMOU_APP_ENV", "test");
+    vi.stubEnv("SANMOU_TEST_API_TOKEN", "temporary-token");
+    vi.stubEnv("SANMOU_OPERATOR_TOKEN", "secret-operator-token");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const unauthorizedResponse = await POST(
+      new Request("http://localhost/api/test-sensors", {
+        body: JSON.stringify({ sensor_code: "T1" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+    );
+
+    expect(unauthorizedResponse.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValueOnce(
+      new Response('{"id":"sensor-id"}', {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const authorizedResponse = await POST(
+      new Request("http://localhost/api/test-sensors", {
+        body: JSON.stringify({ sensor_code: "T1" }),
+        headers: {
+          "Content-Type": "application/json",
+          "X-Sanmou-Operator-Token": "secret-operator-token",
+        },
+        method: "POST",
+      }),
+    );
+
+    expect(authorizedResponse.status).toBe(201);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("不正なOriginからの変更リクエストを403で拒否する", async () => {
+    vi.stubEnv("SANMOU_APP_ENV", "test");
+    vi.stubEnv("SANMOU_TEST_API_TOKEN", "temporary-token");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const crossOriginResponse = await DELETE(
+      new Request("http://localhost:3000/api/test-sensors/sensor-1", {
+        headers: {
+          Origin: "http://evil.example.com",
+        },
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: "sensor-1" }) },
+    );
+
+    expect(crossOriginResponse.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

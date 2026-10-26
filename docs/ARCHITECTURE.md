@@ -100,4 +100,49 @@ Windows / macOSを主対象とし、ポートやパスを設定で扱う。実�
 - 土壌・電池の-1は未計測、負の加速度は有効値。全軸ゼロは姿勢基準として不適切。
 - デモ、実機テスト、本番、仮座標、会場プリセット、手動操作を区別する。
 
-参考：[要件](REQUIREMENTS.md)、[API](API_SPEC.md)、[設計判断](DECISIONS.md)、[検証計画](VALIDATION.md)。
+## 7. Issue #27〜#36 対応の統合改善アーキテクチャ設計（2026-10-26 策定）
+
+```mermaid
+flowchart TB
+    subgraph Backend["FastAPI / ローカル永続層"]
+        CSV["observations.csv<br/>(UTF-8/BOM耐性・アトミック初期化)"]
+        SQLite["sanmou-test.sqlite3<br/>(sensors / mountains / baselines / alerts)"]
+        Eval["共通評価モジュール<br/>(基準姿勢差・通信鮮度・未計測判定)"]
+        CSV --> Eval
+        SQLite <--> Eval
+    end
+
+    subgraph BFF["Next.js Route Handlers (認証・検証境界)"]
+        Auth["現場操作トークン検証<br/>(X-Sanmou-Operator-Key / 単独PC・LAN共有分離)"]
+        Proxy["/api/test-sensors<br/>/api/test-observations<br/>/api/test-baseline"]
+        Auth --> Proxy
+        Proxy <--> Backend
+    end
+
+    subgraph Clients["画面群（単一評価契約の共有）"]
+        MapUI["/map (固定工区BBox投影＋相対スロット)"]
+        ListUI["/sensors (台帳・unknown維持)"]
+        DetailUI["/sensors/[id] (基準差・実測履歴)"]
+        MobileUI["/mobile (未受信時null・localStorage保存検証)"]
+        Proxy <--> MapUI
+        Proxy <--> ListUI
+        Proxy <--> DetailUI
+        Proxy <--> MobileUI
+    end
+```
+
+### 7.1 共通状態評価契約（Issue #27, #28, #31）
+
+| 項目                                            | ルール                                                                                                                                                                                                                                                                                                 |
+| :---------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **実機未受信時 (`latestObs === null`)**         | `dataMode === "test"` では全メトリクスを `null`（待機中／未受信）とし、デモ用固定値を混入させない。未受信時は基準確定を実行せず理由を表示する。                                                                                                                                                        |
+| **観測重要度 (`observationSeverity`)**          | 台帳初期値および未受信・基準未設定時は `unknown`（未判定）を維持し、`normal` へ自動変換しない。基準設定済みかつ有効な加速度がある場合のみ基準ベクトルとの角度差 $\Delta\theta$ で `normal` ($<5^\circ$) / `caution` ($\ge 5^\circ$) / `danger` ($\ge 15^\circ$) を判定する（仮設定であることを明記）。 |
+| **機器故障状態 (`deviceFaultStatus`)**          | 台帳の `unknown` を `ok`（故障なし）へ偽装変換せず、`unknown`（未判定）として全画面で一致表示する。                                                                                                                                                                                                    |
+| **通信鮮度 (`communicationStatus`) と API疎通** | サーバー応答時刻 `refreshed_at` に固定依存せず、クライアントの実経過時計（`nowMs - Date.parse(received_at)`）と `useTestObservations().error` を併用し、API停止後や60秒超過時にオンライン表示が凍結しないようにする。                                                                                  |
+
+### 7.2 機体別基準・警告状態管理と永続化（Issue #29, #30, #32）
+
+- **機体別の基準・警告辞書**: `/api/test-baseline`（および永続JSON/SQLite）では、基準姿勢 `baselines[nodeId]` と警告状態 `alerts[nodeId]` を機体IDごとに独立保持する。`S1` の基準更新や削除を行っても `T1` の警告は消去されない。また全軸ゼロ `(0, 0, 0)` や数値欠損リクエストは `400 Bad Request` で拒否する。
+- **圏外登録キューの保存保証 (`localStorage`)**: `persistPendingQueue` は `boolean`（保存成否）を返し、`setItem` と読み戻し検証が成功した場合のみ「端末内に保存しました」と表示する。例外発生時は失敗バナーと再試行・JSONコピー導線を表示する。
+- **LAN共有時の操作認可**: 起動時の操作キー（同一オリジンPCまたはQRコード経由でペアリングされた端末のみ保持するトークン）を POST / PATCH / DELETE リクエストで検証し、未認証クライアントからの台帳変更・履歴削除・基準変更を `401 Unauthorized` で拒否する。
+  参考：[要件](REQUIREMENTS.md)、[API](API_SPEC.md)、[設計判断](DECISIONS.md)、[検証計画](VALIDATION.md)。

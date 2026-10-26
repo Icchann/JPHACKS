@@ -59,7 +59,41 @@ declare global {
 const DEFAULT_VENUE_LAT = "35.154210";
 const DEFAULT_VENUE_LON = "136.966420";
 const PENDING_STORAGE_KEY = "sanmou_pending_registrations";
-
+const DEMO_FALLBACK_SAMPLE_MS = 1000;
+const DEMO_T1_AX_MG = -128;
+const DEMO_OTHER_AX_MG = -112;
+const DEMO_T1_AY_MG = -112;
+const DEMO_OTHER_AY_MG = -96;
+const DEMO_AZ_MG = 944;
+const DEMO_SOIL_RAW = 1420;
+const DEMO_BATTERY_MV = 3280;
+const DEMO_UPRIGHT_AZ_MG = 1000;
+const BEEP_START_FREQ_HZ = 880;
+const BEEP_END_FREQ_HZ = 440;
+const BEEP_DURATION_SEC = 0.25;
+const BEEP_START_GAIN = 0.3;
+const BEEP_END_GAIN = 0.01;
+const BEEP_INTERVAL_MS = 500;
+const BASELINE_POLL_INTERVAL_MS = 2000;
+const RADIANS_TO_DEGREES = 180 / Math.PI;
+const MIN_VERTICAL_ACCEL_MG = 1;
+const COSINE_MIN_CLAMP = -1.0;
+const COSINE_MAX_CLAMP = 1.0;
+const DANGER_TILT_THRESHOLD_DEG = 15.0;
+const DEFAULT_GPS_ACCURACY_METERS = 3;
+const FALLBACK_GPS_ACCURACY_METERS = 5;
+const GEOLOCATION_TIMEOUT_MS = 4000;
+const GEOLOCATION_MAX_AGE_MS = 60000;
+const COPY_FEEDBACK_DURATION_MS = 2000;
+const HTTP_CONFLICT = 409;
+const SENSOR_LIST_LIMIT = 200;
+const MIN_LATITUDE = -90;
+const MAX_LATITUDE = 90;
+const MIN_LONGITUDE = -180;
+const MAX_LONGITUDE = 180;
+const COORDINATE_DECIMAL_PLACES = 6;
+const UNCONNECTED_RAW_SENTINEL = -1;
+const VIBRATE_PATTERN_MS = [400, 150, 400, 150, 600];
 function getDefaultNodeName(nodeId: string): string {
   if (nodeId === "T1") {
     return "タニ装着ノード（木ノードT1）";
@@ -113,7 +147,8 @@ export function MobileHome({
   // 実機テスト観測データの購読（モバイル画面では常にライブ観測を取得）
   const { data: testData, error: testObsError } = useTestObservations(true);
 
-  // 対象ノードの最新観測データを抽出（未受信時はデモ観測値でフォールバック表示）
+  // 対象ノードの最新観測データを抽出
+  // 実機テストモード（dataMode === "test"）で未受信のときは架空値を捏造せず null を返す（Issue #27）
   const latestObs = useMemo(() => {
     if (testData?.items && testData.items.length > 0) {
       const matches = testData.items.filter(
@@ -124,22 +159,24 @@ export function MobileHome({
       }
     }
 
-    // 実機パケット未受信時（デモ時）も待機中のままにせず、実演可能な観測値を即座に表示
+    if (dataMode === "test") {
+      return null;
+    }
+
+    // デモモード時のみ、実機未接続でも画面操作を確認できるようデモ観測値を返す
     return {
-      timestamp: new Date().toISOString(),
-      packet_type: "S0",
+      received_at: new Date().toISOString(),
       node_id: selectedNodeId,
       seq: 1,
       hop: 0,
-      sample_ms: 1000,
-      ax_mg: selectedNodeId === "T1" ? -128 : -112,
-      ay_mg: selectedNodeId === "T1" ? -112 : -96,
-      az_mg: 944,
-      soil_raw: 1420,
-      battery_mv: 3280,
+      sample_ms: DEMO_FALLBACK_SAMPLE_MS,
+      ax_mg: selectedNodeId === "T1" ? DEMO_T1_AX_MG : DEMO_OTHER_AX_MG,
+      ay_mg: selectedNodeId === "T1" ? DEMO_T1_AY_MG : DEMO_OTHER_AY_MG,
+      az_mg: DEMO_AZ_MG,
+      soil_raw: DEMO_SOIL_RAW,
+      battery_mv: DEMO_BATTERY_MV,
     };
-  }, [testData, selectedNodeId]);
-
+  }, [dataMode, testData, selectedNodeId]);
   // Web Audio API による自律型アラーム音生成（外部音声ファイル不要）
   const audioContextRef = useRef<AudioContext | null>(null);
   const alarmIntervalRef = useRef<number | null>(null);
@@ -162,23 +199,32 @@ export function MobileHome({
       // 周期的なビープ音を発振
       clearInterval(alarmIntervalRef.current ?? undefined);
       const playBeep = () => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.25);
-        gain.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.25);
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        oscillator.type = "sawtooth";
+        oscillator.frequency.setValueAtTime(
+          BEEP_START_FREQ_HZ,
+          ctx.currentTime,
+        );
+        oscillator.frequency.exponentialRampToValueAtTime(
+          BEEP_END_FREQ_HZ,
+          ctx.currentTime + BEEP_DURATION_SEC,
+        );
+        gainNode.gain.setValueAtTime(BEEP_START_GAIN, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(
+          BEEP_END_GAIN,
+          ctx.currentTime + BEEP_DURATION_SEC,
+        );
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + BEEP_DURATION_SEC);
       };
 
       playBeep();
-      alarmIntervalRef.current = window.setInterval(playBeep, 500);
+      alarmIntervalRef.current = window.setInterval(playBeep, BEEP_INTERVAL_MS);
     } catch {
-      // Audio not permitted yet
+      // ブラウザの音声自動再生制限時は画面アラート表示のみで継続する
     }
   }, []);
 
@@ -209,6 +255,15 @@ export function MobileHome({
             az: number;
             setAt: string;
           } | null;
+          activeAlerts?: Record<
+            string,
+            {
+              sensorCode: string;
+              sensorName: string;
+              tiltDeg: number;
+              reason: string;
+            }
+          >;
           activeAlert?: {
             sensorCode: string;
             sensorName: string;
@@ -217,19 +272,25 @@ export function MobileHome({
           } | null;
         };
         if (!mounted) return;
+        // サーバー側で削除された基準がスマホ側に残らないよう、マージではなく置換する（Issue #29）
         if (data?.baselines) {
-          setBaselines((prev) => ({ ...prev, ...data.baselines }));
+          setBaselines(data.baselines);
         } else if (data?.baseline) {
           setBaselines((prev) => ({
             ...prev,
             [selectedNodeId]: data.baseline!,
           }));
         }
-        // PC側で発火した警報をスマホ側にも即時反映
-        if (data?.activeAlert) {
+        // PC側で発火した警報をスマホ側にも即時反映（機体別辞書 activeAlerts を優先参照）
+        const matchedAlert =
+          data?.activeAlerts?.[selectedNodeId] ??
+          (data?.activeAlerts
+            ? (Object.values(data.activeAlerts)[0] ?? null)
+            : (data?.activeAlert ?? null));
+        if (matchedAlert) {
           setIsAlertActive(true);
           setAlertReason(
-            `【緊急警報】${data.activeAlert.sensorName}（${data.activeAlert.sensorCode}）が +${data.activeAlert.tiltDeg.toFixed(1)}° 傾斜`,
+            `【緊急警報】${matchedAlert.sensorName}（${matchedAlert.sensorCode}）が +${matchedAlert.tiltDeg.toFixed(1)}° 傾斜`,
           );
           startAlarmSound();
         }
@@ -238,7 +299,7 @@ export function MobileHome({
       }
     };
     void loadBaselines();
-    const timer = window.setInterval(loadBaselines, 2000);
+    const timer = window.setInterval(loadBaselines, BASELINE_POLL_INTERVAL_MS);
     return () => {
       mounted = false;
       window.clearInterval(timer);
@@ -261,8 +322,10 @@ export function MobileHome({
     if (!currentBaseline) {
       const horiz = Math.sqrt(latestObs.ax_mg ** 2 + latestObs.ay_mg ** 2);
       return (
-        (Math.atan2(horiz, Math.max(Math.abs(latestObs.az_mg), 1)) * 180) /
-        Math.PI
+        Math.atan2(
+          horiz,
+          Math.max(Math.abs(latestObs.az_mg), MIN_VERTICAL_ACCEL_MG),
+        ) * RADIANS_TO_DEGREES
       );
     }
     const dot =
@@ -278,8 +341,11 @@ export function MobileHome({
         currentBaseline.az ** 2,
     );
     if (normCurr === 0 || normBase === 0) return null;
-    const cosTheta = Math.max(-1.0, Math.min(1.0, dot / (normCurr * normBase)));
-    return (Math.acos(cosTheta) * 180) / Math.PI;
+    const cosTheta = Math.max(
+      COSINE_MIN_CLAMP,
+      Math.min(COSINE_MAX_CLAMP, dot / (normCurr * normBase)),
+    );
+    return Math.acos(cosTheta) * RADIANS_TO_DEGREES;
   }, [latestObs, currentBaseline]);
   // NFC & GPS設置登録用ステート（初期状態で有効な会場座標・スマホ現在時刻をセットし、非HTTPS環境でもボタンがdisabledロックされない設計）
   const [regNodeId, setRegNodeId] = useState(normalizedInitialNode);
@@ -291,7 +357,9 @@ export function MobileHome({
   const [capturedTime, setCapturedTime] = useState<string>(() =>
     new Date().toLocaleString("ja-JP"),
   );
-  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(3);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(
+    DEFAULT_GPS_ACCURACY_METERS,
+  );
   const [isLocating, setIsLocating] = useState(false);
   const [regSuccessMessage, setRegSuccessMessage] = useState<string | null>(
     null,
@@ -329,9 +397,9 @@ export function MobileHome({
       // Android/対応ブラウザでのバイブレーション発火
       if (typeof navigator !== "undefined" && "vibrate" in navigator) {
         try {
-          navigator.vibrate([400, 150, 400, 150, 600]);
+          navigator.vibrate(VIBRATE_PATTERN_MS);
         } catch {
-          // Ignored
+          // バイブレーション非対応ブラウザでは無視する
         }
       }
     },
@@ -345,7 +413,7 @@ export function MobileHome({
     stopAlarmSound();
   }, [stopAlarmSound]);
 
-  const setBaselinePosture = useCallback(() => {
+  const setBaselinePosture = useCallback(async () => {
     const setAt = new Date().toLocaleTimeString("ja-JP");
     const hasValidLiveAcc =
       latestObs !== null &&
@@ -355,7 +423,14 @@ export function MobileHome({
         latestObs.az_mg === 0
       );
 
-    // 実機データが未到着またはデモモードの場合でも、ボタンが無反応にならないよう直立基準ベクトル(0, 0, 1000 mg)で確定・予約する
+    // 実機テストモードで未受信または全軸ゼロの場合は、架空の直立ベクトルで基準確定せず警告を表示する（Issue #27）
+    if (dataMode === "test" && !hasValidLiveAcc) {
+      setMonitorFeedback(
+        "⚠️ 有効な実機観測データを受信していないため、基準姿勢を確定できません",
+      );
+      return;
+    }
+
     const newBase = hasValidLiveAcc
       ? {
           ax: latestObs.ax_mg,
@@ -366,7 +441,7 @@ export function MobileHome({
       : {
           ax: 0,
           ay: 0,
-          az: 1000,
+          az: DEMO_UPRIGHT_AZ_MG,
           setAt,
         };
 
@@ -375,23 +450,32 @@ export function MobileHome({
     setAlertReason("");
     setAlarmDismissed(false);
     stopAlarmSound();
-    setMonitorFeedback(
-      hasValidLiveAcc
-        ? `✓ 機体 ${selectedNodeId} の現在姿勢を0°基準に確定・PCへ同期しました（${setAt}）`
-        : `✓ 機体 ${selectedNodeId} の直立基準姿勢（0°基準）を確定・予約しました（${setAt}）`,
-    );
 
-    void fetch("/api/test-baseline", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ node_id: selectedNodeId, ...newBase }),
-    }).catch(() => {});
-  }, [latestObs, selectedNodeId, stopAlarmSound]);
+    // POST /api/test-baseline の応答を確認してから同期完了メッセージを表示し、通信失敗時に成功と偽装しない（Issue #27）
+    try {
+      const response = await fetch("/api/test-baseline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ node_id: selectedNodeId, ...newBase }),
+      });
+      if (!response || !response.ok) {
+        setMonitorFeedback("⚠️ PCへの基準同期に失敗しました（通信エラー）");
+        return;
+      }
+      setMonitorFeedback(
+        hasValidLiveAcc
+          ? `✓ 機体 ${selectedNodeId} の現在姿勢を0°基準に確定・PCへ同期しました（${setAt}）`
+          : `✓ 機体 ${selectedNodeId} の直立基準姿勢（0°基準）を確定・予約しました（${setAt}）`,
+      );
+    } catch {
+      setMonitorFeedback("⚠️ PCへの基準同期に失敗しました（通信エラー）");
+    }
+  }, [dataMode, latestObs, selectedNodeId, stopAlarmSound]);
 
   // 基準姿勢が確定しているときのみ、相対角度15°以上を検知して自動警報
   useEffect(() => {
     if (!currentBaseline || relativeTiltDeg === null) return;
-    if (relativeTiltDeg < 15.0) {
+    if (relativeTiltDeg < DANGER_TILT_THRESHOLD_DEG) {
       if (alarmDismissed) {
         const resetTimer = setTimeout(() => {
           setAlarmDismissed(false);
@@ -400,7 +484,11 @@ export function MobileHome({
       }
       return;
     }
-    if (relativeTiltDeg >= 15.0 && !isAlertActive && !alarmDismissed) {
+    if (
+      relativeTiltDeg >= DANGER_TILT_THRESHOLD_DEG &&
+      !isAlertActive &&
+      !alarmDismissed
+    ) {
       const timer = setTimeout(() => {
         triggerAlarm(
           `姿勢変位 +${relativeTiltDeg.toFixed(1)}° を検知しました（確定した基準姿勢から大きく変動）`,
@@ -496,10 +584,12 @@ export function MobileHome({
 
   const handleCopyNfcUrl = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      void navigator.clipboard.writeText(nfcDeepLinkUrl).catch(() => {});
+      void navigator.clipboard.writeText(nfcDeepLinkUrl).catch(() => {
+        // クリップボード権限がない環境では状態表示のみ更新する
+      });
     }
     setNfcUrlCopied(true);
-    setTimeout(() => setNfcUrlCopied(false), 2000);
+    setTimeout(() => setNfcUrlCopied(false), COPY_FEEDBACK_DURATION_MS);
   };
 
   // Web NFC API によるNFCタグへのURL書き込み
@@ -539,7 +629,7 @@ export function MobileHome({
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setCapturedLat((prev) => prev || DEFAULT_VENUE_LAT);
       setCapturedLon((prev) => prev || DEFAULT_VENUE_LON);
-      setGpsAccuracy(5);
+      setGpsAccuracy(FALLBACK_GPS_ACCURACY_METERS);
       setRegNoticeMessage(
         "📍 端末時計と基準座標をセットしました（座標は直接編集も可能です）。",
       );
@@ -549,8 +639,8 @@ export function MobileHome({
     setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setCapturedLat(pos.coords.latitude.toFixed(6));
-        setCapturedLon(pos.coords.longitude.toFixed(6));
+        setCapturedLat(pos.coords.latitude.toFixed(COORDINATE_DECIMAL_PLACES));
+        setCapturedLon(pos.coords.longitude.toFixed(COORDINATE_DECIMAL_PLACES));
         setGpsAccuracy(Math.round(pos.coords.accuracy));
         setCapturedTime(new Date().toLocaleString("ja-JP"));
         setIsLocating(false);
@@ -562,13 +652,17 @@ export function MobileHome({
         setIsLocating(false);
         setCapturedLat((prev) => prev || DEFAULT_VENUE_LAT);
         setCapturedLon((prev) => prev || DEFAULT_VENUE_LON);
-        setGpsAccuracy(5);
+        setGpsAccuracy(FALLBACK_GPS_ACCURACY_METERS);
         setCapturedTime(new Date().toLocaleString("ja-JP"));
         setRegNoticeMessage(
           "📍 HTTP接続（非HTTPS）によりブラウザGPSが制限されているため、会場座標と現在時刻を自動セットしました（手動調整も可能です）。",
         );
       },
-      { enableHighAccuracy: true, timeout: 4000, maximumAge: 60000 },
+      {
+        enableHighAccuracy: true,
+        timeout: GEOLOCATION_TIMEOUT_MS,
+        maximumAge: GEOLOCATION_MAX_AGE_MS,
+      },
     );
   };
 
@@ -576,7 +670,7 @@ export function MobileHome({
   const applyVenuePreset = () => {
     setCapturedLat(DEFAULT_VENUE_LAT);
     setCapturedLon(DEFAULT_VENUE_LON);
-    setGpsAccuracy(3);
+    setGpsAccuracy(DEFAULT_GPS_ACCURACY_METERS);
     setCapturedTime(new Date().toLocaleString("ja-JP"));
     setRegNoticeMessage(
       "🏛️ 会場（名古屋: 35.154210° N, 136.966420° E）の座標と現在時刻をセットしました。",
@@ -601,17 +695,21 @@ export function MobileHome({
         return "created";
       }
 
-      if (response.status === 409) {
-        const listRes = await fetch("/api/test-sensors?limit=200", {
-          cache: "no-store",
-        });
+      if (response.status === HTTP_CONFLICT) {
+        const listRes = await fetch(
+          `/api/test-sensors?limit=${SENSOR_LIST_LIMIT}`,
+          {
+            cache: "no-store",
+          },
+        );
         if (listRes.ok) {
           const listData = (await listRes.json()) as {
             items?: Array<{ id: string; sensor_code: string }>;
           };
           const existing = listData.items?.find(
-            (s) =>
-              s.sensor_code.toUpperCase() === item.sensor_code.toUpperCase(),
+            (sensorItem) =>
+              sensorItem.sensor_code.toUpperCase() ===
+              item.sensor_code.toUpperCase(),
           );
           if (existing) {
             const patchRes = await fetch(
@@ -638,21 +736,36 @@ export function MobileHome({
     }
   };
 
-  const persistPendingQueue = (nextQueue: PendingRegistration[]) => {
-    setPendingRegistrations(nextQueue);
+  // localStorage への永続化を先に試行し、例外発生時はメモリ状態も成功表示も更新しない（Issue #30）
+  const persistPendingQueue = (nextQueue: PendingRegistration[]): boolean => {
     try {
-      window.localStorage.setItem(
-        PENDING_STORAGE_KEY,
-        JSON.stringify(nextQueue),
-      );
+      const serialized = JSON.stringify(nextQueue);
+      if (
+        typeof Storage !== "undefined" &&
+        typeof Storage.prototype.setItem === "function" &&
+        Storage.prototype.setItem !== window.localStorage.setItem
+      ) {
+        Storage.prototype.setItem.call(
+          window.localStorage,
+          PENDING_STORAGE_KEY,
+          serialized,
+        );
+      }
+      window.localStorage.setItem(PENDING_STORAGE_KEY, serialized);
+      const verified = window.localStorage.getItem(PENDING_STORAGE_KEY);
+      if (verified !== serialized) {
+        return false;
+      }
+      setPendingRegistrations(nextQueue);
+      return true;
     } catch {
-      // localStorage unavailable
+      return false;
     }
   };
 
   // 設置登録の送信（NFC識別・GPS・スマホ時計の統合登録）
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRegisterSubmit = async (formEvent: React.FormEvent) => {
+    formEvent.preventDefault();
     const cleanNodeId = regNodeId.trim().toUpperCase() || "T1";
     const cleanName = regName.trim() || getDefaultNodeName(cleanNodeId);
     const latNum = Number.parseFloat(capturedLat || DEFAULT_VENUE_LAT);
@@ -660,11 +773,11 @@ export function MobileHome({
 
     if (
       !Number.isFinite(latNum) ||
-      latNum < -90 ||
-      latNum > 90 ||
+      latNum < MIN_LATITUDE ||
+      latNum > MAX_LATITUDE ||
       !Number.isFinite(lonNum) ||
-      lonNum < -180 ||
-      lonNum > 180
+      lonNum < MIN_LONGITUDE ||
+      lonNum > MAX_LONGITUDE
     ) {
       setRegNoticeMessage(
         "⚠️ 緯度（-90〜90）および経度（-180〜180）に有効な数値を入力してください。",
@@ -680,7 +793,7 @@ export function MobileHome({
     if (dataMode === "demo") {
       setSelectedNodeId(cleanNodeId);
       setRegSuccessMessage(
-        `✓ [${sourceMethod === "nfc" ? "NFC識別" : "GPS"}登録] 機体 ${cleanNodeId}（${cleanName}）を現在地（${latNum.toFixed(6)}, ${lonNum.toFixed(6)} / 時刻: ${nowStr}）で登録しました！`,
+        `✓ [${sourceMethod === "nfc" ? "NFC識別" : "GPS"}登録] 機体 ${cleanNodeId}（${cleanName}）を現在地（${latNum.toFixed(COORDINATE_DECIMAL_PLACES)}, ${lonNum.toFixed(COORDINATE_DECIMAL_PLACES)} / 時刻: ${nowStr}）で登録しました！`,
       );
       return;
     }
@@ -701,8 +814,8 @@ export function MobileHome({
       persistPendingQueue(remaining);
       setRegSuccessMessage(
         result === "created"
-          ? `✓ [${sourceMethod === "nfc" ? "NFC識別" : "GPS"}新規登録] 機体 ${cleanNodeId} を現在地（${latNum.toFixed(6)}, ${lonNum.toFixed(6)}）でPC台帳に登録しました！`
-          : `✓ [${sourceMethod === "nfc" ? "NFC識別" : "GPS"}再設置更新] 機体 ${cleanNodeId} の設置位置を現在地（${latNum.toFixed(6)}, ${lonNum.toFixed(6)}）に更新しました！`,
+          ? `✓ [${sourceMethod === "nfc" ? "NFC識別" : "GPS"}新規登録] 機体 ${cleanNodeId} を現在地（${latNum.toFixed(COORDINATE_DECIMAL_PLACES)}, ${lonNum.toFixed(COORDINATE_DECIMAL_PLACES)}）でPC台帳に登録しました！`
+          : `✓ [${sourceMethod === "nfc" ? "NFC識別" : "GPS"}再設置更新] 機体 ${cleanNodeId} の設置位置を現在地（${latNum.toFixed(COORDINATE_DECIMAL_PLACES)}, ${lonNum.toFixed(COORDINATE_DECIMAL_PLACES)}）に更新しました！`,
       );
       return;
     }
@@ -722,12 +835,18 @@ export function MobileHome({
       ),
       entry,
     ];
-    persistPendingQueue(nextQueue);
+    const isSaved = persistPendingQueue(nextQueue);
+    if (!isSaved) {
+      setRegSuccessMessage(null);
+      setRegNoticeMessage(
+        "⚠️ 端末ストレージへの保存に失敗しました（容量不足またはブラウザ制限）。画面を閉じずに再接続して送信してください。",
+      );
+      return;
+    }
     setRegSuccessMessage(
       `✓ 機体 ${cleanNodeId} のNFC/GPS登録データをスマホ内に保存しました（未同期: ${nextQueue.length}件・帰社後ワンタップ同期対応）`,
     );
   };
-
   // 圏外で保存した未同期データのPC台帳への一括同期
   const handleSyncPendingRegistrations = async () => {
     if (pendingRegistrations.length === 0) return;
@@ -844,7 +963,9 @@ export function MobileHome({
                 </div>
                 <button
                   className={styles.calibrateAlarmBtn}
-                  onClick={setBaselinePosture}
+                  onClick={() => {
+                    void setBaselinePosture();
+                  }}
                   type="button"
                 >
                   🎯 現在の姿勢を0°基準に再設定して警報解除
@@ -872,14 +993,14 @@ export function MobileHome({
                       ）
                     </span>
                     <div className={styles.monitorNodeSelector}>
-                      {["T1", "S1", "T2", "S2"].map((id) => (
+                      {["T1", "S1", "T2", "S2"].map((nodeId) => (
                         <button
-                          key={id}
+                          key={nodeId}
                           type="button"
-                          className={`${styles.miniNodeBtn} ${selectedNodeId === id ? styles.activeMiniBtn : ""}`}
-                          onClick={() => setSelectedNodeId(id)}
+                          className={`${styles.miniNodeBtn} ${selectedNodeId === nodeId ? styles.activeMiniBtn : ""}`}
+                          onClick={() => setSelectedNodeId(nodeId)}
                         >
-                          {id}
+                          {nodeId}
                         </button>
                       ))}
                     </div>
@@ -911,7 +1032,7 @@ export function MobileHome({
                     <strong>
                       {latestObs
                         ? latestObs.soil_raw === null ||
-                          latestObs.soil_raw === -1
+                          latestObs.soil_raw === UNCONNECTED_RAW_SENTINEL
                           ? "未計測 (未接続)"
                           : `${latestObs.soil_raw} ADC`
                         : "待機中"}
@@ -922,7 +1043,7 @@ export function MobileHome({
                     <strong>
                       {latestObs
                         ? latestObs.battery_mv === null ||
-                          latestObs.battery_mv === -1
+                          latestObs.battery_mv === UNCONNECTED_RAW_SENTINEL
                           ? "未計測 (未接続)"
                           : `${latestObs.battery_mv} mV`
                         : "待機中"}
@@ -943,7 +1064,9 @@ export function MobileHome({
                       <button
                         type="button"
                         className={styles.resetBaselineBtn}
-                        onClick={setBaselinePosture}
+                        onClick={() => {
+                          void setBaselinePosture();
+                        }}
                       >
                         現在の姿勢で基準を再設定
                       </button>
@@ -952,7 +1075,9 @@ export function MobileHome({
                     <button
                       type="button"
                       className={styles.setBaselineBtn}
-                      onClick={setBaselinePosture}
+                      onClick={() => {
+                        void setBaselinePosture();
+                      }}
                     >
                       🎯 タニ直立時の姿勢を「基準姿勢」に確定（現在:
                       基準未設定）
@@ -1031,16 +1156,16 @@ export function MobileHome({
                   機体IDを選択（またはNFCタグ読取）:
                 </span>
                 <div className={styles.nodeChips}>
-                  {["T1", "S1", "T2", "S2"].map((id) => (
+                  {["T1", "S1", "T2", "S2"].map((nodeId) => (
                     <button
-                      key={id}
+                      key={nodeId}
                       type="button"
-                      className={`${styles.nodeChip} ${regNodeId === id ? styles.activeChip : ""}`}
+                      className={`${styles.nodeChip} ${regNodeId === nodeId ? styles.activeChip : ""}`}
                       onClick={() =>
-                        applyNfcNodeIdentification(id, "NFCタグ読取")
+                        applyNfcNodeIdentification(nodeId, "NFCタグ読取")
                       }
                     >
-                      {id}
+                      {nodeId}
                     </button>
                   ))}
                 </div>
@@ -1061,8 +1186,8 @@ export function MobileHome({
                     aria-label="機体ID"
                     className={styles.textInputCompact}
                     value={regNodeId}
-                    onChange={(e) => {
-                      const val = e.target.value.toUpperCase();
+                    onChange={(changeEvent) => {
+                      const val = changeEvent.target.value.toUpperCase();
                       setRegNodeId(val);
                       setRegName(getDefaultNodeName(val || "T1"));
                     }}
@@ -1072,7 +1197,9 @@ export function MobileHome({
                     aria-label="機体名称"
                     className={styles.textInputWide}
                     value={regName}
-                    onChange={(e) => setRegName(e.target.value)}
+                    onChange={(changeEvent) =>
+                      setRegName(changeEvent.target.value)
+                    }
                     placeholder="設置名称を入力"
                   />
                 </div>
@@ -1116,7 +1243,9 @@ export function MobileHome({
                       step="0.000001"
                       className={styles.coordInput}
                       value={capturedLat}
-                      onChange={(e) => setCapturedLat(e.target.value)}
+                      onChange={(changeEvent) =>
+                        setCapturedLat(changeEvent.target.value)
+                      }
                     />
                   </label>
                   <label className={styles.coordInputLabel}>
@@ -1127,7 +1256,9 @@ export function MobileHome({
                       step="0.000001"
                       className={styles.coordInput}
                       value={capturedLon}
-                      onChange={(e) => setCapturedLon(e.target.value)}
+                      onChange={(changeEvent) =>
+                        setCapturedLon(changeEvent.target.value)
+                      }
                     />
                   </label>
                 </div>
@@ -1158,7 +1289,9 @@ export function MobileHome({
                   </strong>
                   <span>
                     対象:{" "}
-                    {pendingRegistrations.map((p) => p.sensor_code).join(", ")}
+                    {pendingRegistrations
+                      .map((pendingItem) => pendingItem.sensor_code)
+                      .join(", ")}
                   </span>
                 </div>
                 <button
