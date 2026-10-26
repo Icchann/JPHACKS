@@ -6,20 +6,34 @@
 .triggerButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  height: 38px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
   background: var(--surface);
   color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  transition: all 0.15s ease;
+  touch-action: manipulation;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 2px 0 #cbd5e1,
+    0 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.12s ease;
 }
 
+.triggerButton:hover {
+  background: var(--surface-muted);
+  border-color: var(--accent);
+}
+
+.triggerButton:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
 .triggerButton:hover {
   background: var(--surface-muted);
   border-color: var(--accent);

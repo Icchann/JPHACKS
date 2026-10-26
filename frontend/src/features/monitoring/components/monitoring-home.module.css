@@ -56,22 +56,28 @@
 
 .engineSwitcher {
   display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  align-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
   overflow: hidden;
   background: var(--surface);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 2px 0 #cbd5e1,
+    0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .engineBtn {
-  height: 36px;
+  height: 34px;
   padding: 0 12px;
   border: none;
   background: transparent;
-  color: var(--text-subtle);
+  color: var(--text);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.15s ease;
+  touch-action: manipulation;
+  transition: all 0.12s ease;
 }
 
 .engineBtn:not(:last-child) {
@@ -80,24 +86,29 @@
 
 .engineBtn:hover {
   background: var(--surface-muted);
-  color: var(--text);
+}
+
+.engineBtn:active {
+  transform: translateY(1px);
 }
 
 .engineBtn.activeEngine {
   background: var(--forest-700);
   color: #ffffff;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .addMountainBtn {
-  height: 36px;
+  height: 34px;
   padding: 0 10px;
   border: none;
   background: transparent;
-  color: var(--text-subtle);
+  color: var(--text-muted);
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.15s ease;
+  touch-action: manipulation;
+  transition: all 0.12s ease;
 }
 
 .addMountainBtn:hover {
@@ -239,17 +250,23 @@
 .warningToggleBtn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
   background: var(--surface);
   color: var(--text);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.15s ease;
+  touch-action: manipulation;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 2px 0 #cbd5e1,
+    0 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.12s ease;
 }
 
 .warningToggleBtn:hover {
@@ -257,11 +274,16 @@
   border-color: var(--accent);
 }
 
-.warningToggleBtn.hasAlerts {
-  border-color: #f59e0b;
-  color: #f59e0b;
+.warningToggleBtn:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
+.warningToggleBtn.hasAlerts {
+  border-color: #d97706;
+  color: #b45309;
+  background: #fffbeb;
+}
 .warningToggleBtn svg {
   width: 16px;
   height: 16px;
@@ -1138,26 +1160,36 @@
 }
 
 .openMobileModalBtn {
-  min-height: 36px;
+  height: 34px;
   padding: 0 12px;
-  border: 1px solid #10b981;
-  background: #ecfdf5;
-  color: #065f46;
-  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 7px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  touch-action: manipulation;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  transition: all 0.15s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 2px 0 #cbd5e1,
+    0 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.12s ease;
 }
 
 .openMobileModalBtn:hover {
-  background: #d1fae5;
-  border-color: #059669;
+  background: var(--surface-muted);
+  border-color: var(--accent);
 }
 
+.openMobileModalBtn:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
 .qrModalBody {
   padding: 24px 20px;
   display: flex;
@@ -1455,24 +1487,35 @@
 }
 
 .resetT1AngleBtn {
-  min-height: 36px;
+  height: 34px;
   padding: 0 12px;
   border: 1px solid #0d9488;
   background: #f0fdfa;
   color: #0f766e;
-  border-radius: 6px;
+  border-radius: 7px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  touch-action: manipulation;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  transition: all 0.15s ease;
+  justify-content: center;
+  gap: 6px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 2px 0 #99f6e4,
+    0 2px 4px rgba(13, 148, 136, 0.08);
+  transition: all 0.12s ease;
 }
 
 .resetT1AngleBtn:hover {
   background: #ccfbf1;
   border-color: #14b8a6;
+}
+
+.resetT1AngleBtn:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* ボタンの影とフォーカス枠が親要素で切れない余白を確保します。 */
