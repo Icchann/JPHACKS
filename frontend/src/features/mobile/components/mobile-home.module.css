@@ -440,6 +440,14 @@
   border-radius: 999px;
 }
 
+.manualSelectedBadge {
+  background-color: #0369a1;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
 .nfcScanBigBtn {
   width: 100%;
   min-height: 52px;

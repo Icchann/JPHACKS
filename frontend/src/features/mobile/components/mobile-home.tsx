@@ -80,8 +80,6 @@ const MIN_VERTICAL_ACCEL_MG = 1;
 const COSINE_MIN_CLAMP = -1.0;
 const COSINE_MAX_CLAMP = 1.0;
 const DANGER_TILT_THRESHOLD_DEG = 15.0;
-const DEFAULT_GPS_ACCURACY_METERS = 3;
-const FALLBACK_GPS_ACCURACY_METERS = 5;
 const GEOLOCATION_TIMEOUT_MS = 4000;
 const GEOLOCATION_MAX_AGE_MS = 60000;
 const COPY_FEEDBACK_DURATION_MS = 2000;
@@ -356,9 +354,8 @@ export function MobileHome({
   const [capturedLon, setCapturedLon] = useState<string>(DEFAULT_VENUE_LON);
   // サーバー(Node.js)とスマホ端末のロケール・時刻差による Hydration Error を防ぐため、初期値は固定しマウント後にクライアント現在時刻をセットする
   const [capturedTime, setCapturedTime] = useState<string>("");
-  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(
-    DEFAULT_GPS_ACCURACY_METERS,
-  );
+  // 測位精度: 実測GPS取得前は null とし、架空の精度表示（±3m等）を防止する（Issue #42, AGENTS.md §5.5）
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [regSuccessMessage, setRegSuccessMessage] = useState<string | null>(
     null,
@@ -519,20 +516,22 @@ export function MobileHome({
       stopAlarmSound();
     };
   }, [stopAlarmSound]);
-  // NFCタグ読み取り完了時の共通反映処理
-  const applyNfcNodeIdentification = useCallback(
-    (nodeId: string, sourceLabel: string) => {
+  // 機体識別反映処理（物理NFCタグ読取、ディープリンク、または手動ボタン選択）
+  const applyNodeIdentification = useCallback(
+    (nodeId: string, sourceLabel: string, isPhysicalNfc = false) => {
       const cleanId = nodeId.trim().toUpperCase();
       const nowStr = new Date().toLocaleString("ja-JP");
       setSelectedNodeId(cleanId);
       setRegNodeId(cleanId);
       setRegName(getDefaultNodeName(cleanId));
       setCapturedTime(nowStr);
-      setNfcTagDetectedId(cleanId);
+      setNfcTagDetectedId(isPhysicalNfc ? cleanId : null);
       setActiveTab("register");
       setRegSuccessMessage(null);
       setRegNoticeMessage(
-        `🏷️ ${sourceLabel}により機体「${cleanId}」を識別しました（読取時刻: ${nowStr}）。下の登録ボタンで設置を確定してください。`,
+        isPhysicalNfc
+          ? `🏷️ ${sourceLabel}により機体「${cleanId}」を識別しました（読取時刻: ${nowStr}）。下の登録ボタンで設置を確定してください。`
+          : `🔘 ${sourceLabel}により機体「${cleanId}」を選択しました。下の登録ボタンで設置を確定してください。`,
       );
     },
     [],
@@ -544,8 +543,10 @@ export function MobileHome({
     const NdefCtor = window.NDEFReader;
 
     if (!NdefCtor) {
-      // iOS Safari 等、ブラウザ内 Web NFC API 非対応環境ではOS標準のNFCタグリーダーまたは下のワンタップ機体識別タグを使用可能にする
-      applyNfcNodeIdentification(regNodeId, "NFCタグ識別");
+      // iOS Safari 等、ブラウザ内 Web NFC API 非対応環境では成功偽装を行わず、正直な案内を表示する（Issue #42, AGENTS.md §5.5）
+      setRegNoticeMessage(
+        "ℹ️ ご利用のブラウザ・環境はWeb NFC直接読取に対応していません。機体タグにかざしてPWAを自動起動するか、下の機体ボタンから手動選択してください。",
+      );
       return;
     }
 
@@ -564,22 +565,26 @@ export function MobileHome({
             const decoded = decoder.decode(record.data);
             const parsedNode = extractNodeIdFromNfcPayload(decoded);
             if (parsedNode) {
-              applyNfcNodeIdentification(parsedNode, "Web NFCスキャン");
+              applyNodeIdentification(parsedNode, "Web NFCスキャン", true);
               return;
             }
           }
         }
-        applyNfcNodeIdentification(regNodeId, "NFCタグ応答");
+        setRegNoticeMessage(
+          "⚠️ 読み取ったNFCタグに機体ID（T1/S1等）が含まれていませんでした。下の機体ボタンから手動選択してください。",
+        );
       };
       ndef.onreadingerror = () => {
         setIsScanningNfc(false);
         setRegNoticeMessage(
-          "⚠️ NFCタグの読み取りに失敗しました。もう一度かざすか、下のNFCタグ識別ボタンを押してください。",
+          "⚠️ NFCタグの読み取りに失敗しました。もう一度かざすか、下の機体ボタンから手動選択してください。",
         );
       };
     } catch {
       setIsScanningNfc(false);
-      applyNfcNodeIdentification(regNodeId, "NFCタグ識別");
+      setRegNoticeMessage(
+        "⚠️ NFCスキャンの開始に失敗しました（権限が拒否されたか、非HTTPS接続です）。下の機体ボタンから手動選択してください。",
+      );
     }
   };
 
@@ -632,7 +637,7 @@ export function MobileHome({
     }
   };
 
-  // GPSおよび端末時計の取得（非HTTPS環境でブロックされた場合も即座にフォールバック座標＋現在時刻をセット）
+  // GPSおよび端末時計の取得（非HTTPS環境で制限された場合もフォールバック座標＋現在時刻をセット）
   const captureGpsLocation = () => {
     const nowStr = new Date().toLocaleString("ja-JP");
     setCapturedTime(nowStr);
@@ -640,9 +645,9 @@ export function MobileHome({
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setCapturedLat((prev) => prev || DEFAULT_VENUE_LAT);
       setCapturedLon((prev) => prev || DEFAULT_VENUE_LON);
-      setGpsAccuracy(FALLBACK_GPS_ACCURACY_METERS);
+      setGpsAccuracy(null);
       setRegNoticeMessage(
-        "📍 端末時計と基準座標をセットしました（座標は直接編集も可能です）。",
+        "📍 端末時計と参考座標をセットしました（ブラウザ位置情報非対応）。",
       );
       return;
     }
@@ -656,17 +661,17 @@ export function MobileHome({
         setCapturedTime(new Date().toLocaleString("ja-JP"));
         setIsLocating(false);
         setRegNoticeMessage(
-          `📍 スマホGPSから現在地（精度 ±${Math.round(pos.coords.accuracy)}m）と現在時刻を取得しました。`,
+          `📍 スマホGPSから現在地（実測精度 ±${Math.round(pos.coords.accuracy)}m）と現在時刻を取得しました。`,
         );
       },
       () => {
         setIsLocating(false);
         setCapturedLat((prev) => prev || DEFAULT_VENUE_LAT);
         setCapturedLon((prev) => prev || DEFAULT_VENUE_LON);
-        setGpsAccuracy(FALLBACK_GPS_ACCURACY_METERS);
+        setGpsAccuracy(null);
         setCapturedTime(new Date().toLocaleString("ja-JP"));
         setRegNoticeMessage(
-          "📍 HTTP接続（非HTTPS）によりブラウザGPSが制限されているため、会場座標と現在時刻を自動セットしました（手動調整も可能です）。",
+          "📍 GPS測位に失敗したため、参考会場座標と現在時刻をセットしました（手動調整可能です）。",
         );
       },
       {
@@ -677,14 +682,14 @@ export function MobileHome({
     );
   };
 
-  // 会場座標（名古屋）プリセット入力
+  // 会場座標（名古屋）プリセット入力（実測精度は持たないため null とする: Issue #42）
   const applyVenuePreset = () => {
     setCapturedLat(DEFAULT_VENUE_LAT);
     setCapturedLon(DEFAULT_VENUE_LON);
-    setGpsAccuracy(DEFAULT_GPS_ACCURACY_METERS);
+    setGpsAccuracy(null);
     setCapturedTime(new Date().toLocaleString("ja-JP"));
     setRegNoticeMessage(
-      "🏛️ 会場（名古屋: 35.154210° N, 136.966420° E）の座標と現在時刻をセットしました。",
+      "🏛️ 会場（名古屋: 35.154210° N, 136.966420° E）の参考座標と現在時刻をセットしました。",
     );
   };
 
@@ -799,12 +804,22 @@ export function MobileHome({
     const nowStr = capturedTime || new Date().toLocaleString("ja-JP");
     setCapturedTime(nowStr);
     const sourceMethod: PendingRegistration["sourceMethod"] =
-      nfcTagDetectedId === cleanNodeId ? "nfc" : "gps";
+      nfcTagDetectedId === cleanNodeId
+        ? "nfc"
+        : gpsAccuracy !== null
+          ? "gps"
+          : "manual";
+    const methodLabel =
+      sourceMethod === "nfc"
+        ? "NFC識別"
+        : sourceMethod === "gps"
+          ? "GPS実測"
+          : "手動/プリセット";
 
     if (dataMode === "demo") {
       setSelectedNodeId(cleanNodeId);
       setRegSuccessMessage(
-        `✓ [${sourceMethod === "nfc" ? "NFC識別" : "GPS"}登録] 機体 ${cleanNodeId}（${cleanName}）を現在地（${latNum.toFixed(COORDINATE_DECIMAL_PLACES)}, ${lonNum.toFixed(COORDINATE_DECIMAL_PLACES)} / 時刻: ${nowStr}）で登録しました！`,
+        `✓ [${methodLabel}登録] 機体 ${cleanNodeId}（${cleanName}）を現在地（${latNum.toFixed(COORDINATE_DECIMAL_PLACES)}, ${lonNum.toFixed(COORDINATE_DECIMAL_PLACES)} / 時刻: ${nowStr}）で登録しました！`,
       );
       return;
     }
@@ -825,8 +840,8 @@ export function MobileHome({
       persistPendingQueue(remaining);
       setRegSuccessMessage(
         result === "created"
-          ? `✓ [${sourceMethod === "nfc" ? "NFC識別" : "GPS"}新規登録] 機体 ${cleanNodeId} を現在地（${latNum.toFixed(COORDINATE_DECIMAL_PLACES)}, ${lonNum.toFixed(COORDINATE_DECIMAL_PLACES)}）でPC台帳に登録しました！`
-          : `✓ [${sourceMethod === "nfc" ? "NFC識別" : "GPS"}再設置更新] 機体 ${cleanNodeId} の設置位置を現在地（${latNum.toFixed(COORDINATE_DECIMAL_PLACES)}, ${lonNum.toFixed(COORDINATE_DECIMAL_PLACES)}）に更新しました！`,
+          ? `✓ [${methodLabel}新規登録] 機体 ${cleanNodeId} を現在地（${latNum.toFixed(COORDINATE_DECIMAL_PLACES)}, ${lonNum.toFixed(COORDINATE_DECIMAL_PLACES)}）でPC台帳に登録しました！`
+          : `✓ [${methodLabel}再設置更新] 機体 ${cleanNodeId} の設置位置を現在地（${latNum.toFixed(COORDINATE_DECIMAL_PLACES)}, ${lonNum.toFixed(COORDINATE_DECIMAL_PLACES)}）に更新しました！`,
       );
       return;
     }
@@ -1143,10 +1158,14 @@ export function MobileHome({
             {/* NFC機体識別・スキャンブロック */}
             <div className={styles.nfcScanBox}>
               <div className={styles.nfcScanHeader}>
-                <strong>🏷️ STEP 1: NFCタグで機体を識別</strong>
-                {nfcTagDetectedId && (
+                <strong>🏷️ STEP 1: NFCまたは手動で機体を識別</strong>
+                {nfcTagDetectedId ? (
                   <span className={styles.nfcDetectedBadge}>
                     NFC認識済: {nfcTagDetectedId}
+                  </span>
+                ) : (
+                  <span className={styles.manualSelectedBadge}>
+                    手動選択: {regNodeId}
                   </span>
                 )}
               </div>
@@ -1173,7 +1192,7 @@ export function MobileHome({
                       type="button"
                       className={`${styles.nodeChip} ${regNodeId === nodeId ? styles.activeChip : ""}`}
                       onClick={() =>
-                        applyNfcNodeIdentification(nodeId, "NFCタグ読取")
+                        applyNodeIdentification(nodeId, "機体ボタン選択", false)
                       }
                     >
                       {nodeId}
@@ -1279,12 +1298,14 @@ export function MobileHome({
                     {capturedTime || "現在時刻を取得中..."}
                   </strong>
                 </div>
-                {gpsAccuracy !== null && (
-                  <div className={styles.summaryRow}>
-                    <span>測位精度:</span>
-                    <span>±{gpsAccuracy}m</span>
-                  </div>
-                )}
+                <div className={styles.summaryRow}>
+                  <span>測位精度:</span>
+                  <span>
+                    {gpsAccuracy !== null
+                      ? `実測 ±${gpsAccuracy}m`
+                      : "未測位（参考プリセット座標）"}
+                  </span>
+                </div>
               </div>
 
               <button type="submit" className={styles.submitRegistrationBtn}>
