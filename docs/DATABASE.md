@@ -26,10 +26,13 @@
 | `name` | VARCHAR(128) | NO | - | センサー名称 |
 | `latitude` | FLOAT | NO | - | 設置緯度（-90.0 〜 90.0） |
 | `longitude` | FLOAT | NO | - | 設置経度（-180.0 〜 180.0） |
+| `installed_at` | TIMESTAMP | YES | `NULL` | 現場設置確定日時（ISO 8601 UTC） |
+| `position_accuracy_m` | FLOAT | YES | `NULL` | 測位精度（メートル、未取得時 NULL） |
+| `identity_method` | VARCHAR(32) | YES | `NULL` | 機体識別方法（`web_nfc`, `url`, `manual`） |
+| `position_method` | VARCHAR(32) | YES | `NULL` | 測位方法（`gps`, `manual`, `demo_preset`） |
 | `is_deleted` | BOOLEAN | NO | `false` | 論理削除フラグ |
 | `created_at` | TIMESTAMP | NO | 現在UTC | 登録日時 |
 | `updated_at` | TIMESTAMP | NO | 現在UTC | 更新日時 |
-
 ### 2.2 `sensor_evaluation_states`（センサー判定状態テーブル）
 センサーの観測重要度と機器状態を独立して保持するテーブル（`sensors` と 1:1 紐付け）。
 

@@ -9,6 +9,10 @@ export type TestSensor = {
   device_fault_status: "ok" | "fault" | "unknown";
   low_battery: boolean | null;
   last_received_at: string | null;
+  installed_at?: string | null;
+  position_accuracy_m?: number | null;
+  identity_method?: "web_nfc" | "url" | "manual" | null;
+  position_method?: "gps" | "manual" | "demo_preset" | null;
   source: "device_test";
 };
 

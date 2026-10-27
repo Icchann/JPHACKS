@@ -18,6 +18,10 @@ class Sensor(Base):
     longitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     device_external_id: Mapped[str | None] = mapped_column(String(128), unique=True)
     last_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    installed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    position_accuracy_m: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+    identity_method: Mapped[str | None] = mapped_column(String(32))
+    position_method: Mapped[str | None] = mapped_column(String(32))
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(

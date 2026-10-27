@@ -34,13 +34,17 @@
   "sensor_code": "T1",
   "name": "樹木ノード01",
   "latitude": 35.1234567,
-  "longitude": 137.9876543
+  "longitude": 137.9876543,
+  "installed_at": "2026-10-27T08:30:00Z",
+  "position_accuracy_m": 4.5,
+  "identity_method": "web_nfc",
+  "position_method": "gps"
 }
 ```
 
-現在の作成・編集スキーマはID・名称・座標を中心とする。スマホに表示・保存した設置日時・精度等が、すべてPCへ送られ永続化されるとはしない。
+作成・編集スキーマにはID・名称・座標に加え、現場設置記録メタデータ（設置確定日時 `installed_at`、測位精度 `position_accuracy_m`、識別方法 `identity_method`、測位方法 `position_method`）を含みます（Issue #47）。
 
-台帳一覧は `items` と `next_cursor` を返す。状態フィールドは `observation_severity`、`communication_status`、`device_fault_status`、`low_battery`、`last_received_at` 等。列挙値・制約は `backend/app/schemas/sensors.py` に従う。
+台帳一覧は `items` と `next_cursor` を返す。状態フィールドは `observation_severity`、`communication_status`、`device_fault_status`、`low_battery`、`last_received_at`、`installed_at` 等。列挙値・制約は `backend/app/schemas/sensors.py` に従う。
 
 ### 観測取得
 

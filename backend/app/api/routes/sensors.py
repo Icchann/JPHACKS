@@ -29,6 +29,12 @@ def _snapshot(sensor: Sensor) -> dict[str, str | float | None]:
         "latitude": float(sensor.latitude),
         "longitude": float(sensor.longitude),
         "device_external_id": sensor.device_external_id,
+        "installed_at": sensor.installed_at.isoformat() if sensor.installed_at else None,
+        "position_accuracy_m": (
+            float(sensor.position_accuracy_m) if sensor.position_accuracy_m is not None else None
+        ),
+        "identity_method": sensor.identity_method,
+        "position_method": sensor.position_method,
     }
 
 
@@ -54,6 +60,12 @@ def _response(sensor: Sensor) -> SensorResponse:
         ),
         low_battery=evaluation.low_battery if evaluation is not None else None,
         last_received_at=sensor.last_received_at,
+        installed_at=sensor.installed_at,
+        position_accuracy_m=(
+            float(sensor.position_accuracy_m) if sensor.position_accuracy_m is not None else None
+        ),
+        identity_method=sensor.identity_method,
+        position_method=sensor.position_method,
     )
 
 
@@ -149,6 +161,14 @@ def create_sensor(
         name=payload.name,
         latitude=Decimal(str(payload.latitude)),
         longitude=Decimal(str(payload.longitude)),
+        installed_at=payload.installed_at,
+        position_accuracy_m=(
+            Decimal(str(payload.position_accuracy_m))
+            if payload.position_accuracy_m is not None
+            else None
+        ),
+        identity_method=payload.identity_method,
+        position_method=payload.position_method,
     )
     sensor.evaluation_state = SensorEvaluationState()
     try:
@@ -184,9 +204,18 @@ def update_sensor(
 
     sensor = _active_sensor_or_404(session, sensor_id)
     before = _snapshot(sensor)
-    sensor.name = payload.name
+    if payload.name is not None:
+        sensor.name = payload.name
     sensor.latitude = Decimal(str(payload.latitude))
     sensor.longitude = Decimal(str(payload.longitude))
+    if payload.installed_at is not None:
+        sensor.installed_at = payload.installed_at
+    if payload.position_accuracy_m is not None:
+        sensor.position_accuracy_m = Decimal(str(payload.position_accuracy_m))
+    if payload.identity_method is not None:
+        sensor.identity_method = payload.identity_method
+    if payload.position_method is not None:
+        sensor.position_method = payload.position_method
     session.add(
         AuditLog(
             action="sensor.updated",

@@ -11,6 +11,10 @@ class SensorCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
+    installed_at: datetime | None = None
+    position_accuracy_m: float | None = Field(default=None, ge=0, le=10000)
+    identity_method: Literal["web_nfc", "url", "manual"] | None = None
+    position_method: Literal["gps", "manual", "demo_preset"] | None = None
 
     @field_validator("sensor_code", "name")
     @classmethod
@@ -33,13 +37,19 @@ class SensorCreate(BaseModel):
 
 
 class SensorUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
+    installed_at: datetime | None = None
+    position_accuracy_m: float | None = Field(default=None, ge=0, le=10000)
+    identity_method: Literal["web_nfc", "url", "manual"] | None = None
+    position_method: Literal["gps", "manual", "demo_preset"] | None = None
 
     @field_validator("name")
     @classmethod
-    def strip_required_text(cls, value: str) -> str:
+    def strip_required_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         normalized = value.strip()
         if not normalized:
             raise ValueError("空白以外の文字を入力してください")
@@ -59,6 +69,10 @@ class SensorResponse(BaseModel):
     device_fault_status: Literal["ok", "fault", "unknown"]
     low_battery: bool | None
     last_received_at: datetime | None
+    installed_at: datetime | None = None
+    position_accuracy_m: float | None = None
+    identity_method: str | None = None
+    position_method: str | None = None
     source: Literal["device_test"] = "device_test"
 
 

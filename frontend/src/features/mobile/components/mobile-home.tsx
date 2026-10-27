@@ -25,6 +25,10 @@ type PendingRegistration = {
   longitude: number;
   capturedAt: string;
   sourceMethod: "nfc" | "gps" | "manual";
+  installed_at?: string;
+  position_accuracy_m?: number | null;
+  identity_method?: "web_nfc" | "url" | "manual";
+  position_method?: "gps" | "manual" | "demo_preset";
 };
 
 // Web NFC API (NDEFReader) の型定義（Android Chrome 等で標準対応）
@@ -746,6 +750,10 @@ export function MobileHome({
     name: string;
     latitude: number;
     longitude: number;
+    installed_at?: string;
+    position_accuracy_m?: number | null;
+    identity_method?: "web_nfc" | "url" | "manual";
+    position_method?: "gps" | "manual" | "demo_preset";
   }): Promise<RegistrationSendResult> => {
     try {
       const headers: Record<string, string> = {
@@ -845,9 +853,17 @@ export function MobileHome({
             name?: string;
             latitude: number;
             longitude: number;
+            installed_at?: string;
+            position_accuracy_m?: number | null;
+            identity_method?: "web_nfc" | "url" | "manual";
+            position_method?: "gps" | "manual" | "demo_preset";
           } = {
             latitude: item.latitude,
             longitude: item.longitude,
+            installed_at: item.installed_at,
+            position_accuracy_m: item.position_accuracy_m,
+            identity_method: item.identity_method,
+            position_method: item.position_method,
           };
           if (shouldUpdateName) {
             patchPayload.name = item.name;
@@ -949,14 +965,29 @@ export function MobileHome({
       );
       return;
     }
+    const installedAtIso = new Date().toISOString();
+    const identityMethod: "web_nfc" | "url" | "manual" = isNfcLaunch
+      ? "url"
+      : nfcTagDetectedId === cleanNodeId
+        ? "web_nfc"
+        : "manual";
+    const positionMethod: "gps" | "manual" | "demo_preset" =
+      gpsAccuracy !== null
+        ? "gps"
+        : capturedLat === DEFAULT_VENUE_LAT && capturedLon === DEFAULT_VENUE_LON
+          ? "demo_preset"
+          : "manual";
 
     const result = await sendRegistrationToBackend({
       sensor_code: cleanNodeId,
       name: cleanName,
       latitude: latNum,
       longitude: lonNum,
+      installed_at: installedAtIso,
+      position_accuracy_m: gpsAccuracy,
+      identity_method: identityMethod,
+      position_method: positionMethod,
     });
-
     if (result === "created" || result === "updated") {
       setSelectedNodeId(cleanNodeId);
       // 同期済みになった機体が未同期キューにあれば除去
@@ -995,6 +1026,10 @@ export function MobileHome({
       longitude: lonNum,
       capturedAt: nowStr,
       sourceMethod,
+      installed_at: installedAtIso,
+      position_accuracy_m: gpsAccuracy,
+      identity_method: identityMethod,
+      position_method: positionMethod,
     };
     const nextQueue = [
       ...pendingRegistrations.filter(
@@ -1035,9 +1070,12 @@ export function MobileHome({
         name: item.name,
         latitude: item.latitude,
         longitude: item.longitude,
+        installed_at: item.installed_at,
+        position_accuracy_m: item.position_accuracy_m,
+        identity_method: item.identity_method,
+        position_method: item.position_method,
       });
       if (res === "created" || res === "updated") {
-        syncedCount += 1;
         successfullySyncedCodes.add(item.sensor_code.toUpperCase());
       } else {
         if (res === "unauthorized") {

@@ -498,4 +498,60 @@ describe("MobileHome", () => {
     // PATCH が呼ばれていないこと（冪等性）
     expect(patchCalled).toBe(false);
   });
+
+  it("設置登録時に installed_at, identity_method, position_method の設置メタデータを送信・保存する (Issue #47)", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof Request
+              ? input.url
+              : "";
+        if (url.includes("/api/test-baseline")) {
+          return new Response(
+            JSON.stringify({ baselines: {}, activeAlerts: {} }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+        if (url.includes("/api/test-sensors")) {
+          return new Response(
+            JSON.stringify({ id: "sensor-created", sensor_code: "T1" }),
+            {
+              status: 201,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+        return new Response("{}", { status: 200 });
+      });
+
+    render(
+      <MobileHome
+        dataMode="test"
+        initialNodeId="T1"
+        initialTab="register"
+        isNfcLaunch={true}
+      />,
+    );
+
+    const submitBtn = screen.getByRole("button", {
+      name: "この位置・時刻で機体を固定登録",
+    });
+    fireEvent.click(submitBtn);
+
+    await screen.findByText(/新規登録.*PC台帳に登録しました/);
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/test-sensors",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringMatching(/"identity_method":"url"/),
+      }),
+    );
+  });
 });

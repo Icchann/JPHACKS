@@ -184,3 +184,55 @@ def test_search_sensors_escapes_underscore_and_percent_wildcards(
     res_percent = client.get("/sensors", params={"q": "100%"}, headers=_headers())
     assert res_percent.status_code == 200
     assert res_percent.json()["items"] == []
+
+
+def test_sensor_installation_metadata_contract_and_audit(
+    sensor_client: tuple[TestClient, str],
+) -> None:
+    client, database_url = sensor_client
+
+    # 1. 設置日時・精度・識別方法・測位方法付きで登録
+    install_payload = _payload("T10")
+    install_payload.update(
+        {
+            "installed_at": "2026-10-27T08:30:00Z",
+            "position_accuracy_m": 4.5,
+            "identity_method": "web_nfc",
+            "position_method": "gps",
+        }
+    )
+    created = client.post("/sensors", json=install_payload, headers=_headers())
+    assert created.status_code == 201
+    body = created.json()
+    assert body["sensor_code"] == "T10"
+    assert body["position_accuracy_m"] == 4.5
+    assert body["identity_method"] == "web_nfc"
+    assert body["position_method"] == "gps"
+    assert "2026-10-27T08:30:00" in body["installed_at"]
+
+    # 2. 設置情報の更新
+    patch_payload = {
+        "latitude": 35.005,
+        "longitude": 137.01,
+        "installed_at": "2026-10-27T09:00:00Z",
+        "position_accuracy_m": 2.1,
+        "identity_method": "url",
+        "position_method": "manual",
+    }
+    updated = client.patch(f"/sensors/{body['id']}", json=patch_payload, headers=_headers())
+    assert updated.status_code == 200
+    updated_body = updated.json()
+    assert updated_body["position_accuracy_m"] == 2.1
+    assert updated_body["identity_method"] == "url"
+    assert updated_body["position_method"] == "manual"
+
+    # 3. 監査ログに設置メタデータが記録されていること
+    with get_session_factory(database_url)() as session:
+        logs = list(session.scalars(select(AuditLog).where(AuditLog.target_id == body["id"])))
+    assert len(logs) == 2
+    created_log = next(log for log in logs if log.action == "sensor.created")
+    updated_log = next(log for log in logs if log.action == "sensor.updated")
+    assert created_log.after_json["identity_method"] == "web_nfc"
+    assert created_log.after_json["position_accuracy_m"] == 4.5
+    assert updated_log.after_json["identity_method"] == "url"
+    assert updated_log.after_json["position_accuracy_m"] == 2.1
