@@ -560,7 +560,17 @@ export function MobileHome({
       const nowStr = new Date().toLocaleString("ja-JP");
       setSelectedNodeId(cleanId);
       setRegNodeId(cleanId);
-      setRegName(getDefaultNodeName(cleanId));
+      setRegName((prev) => {
+        // 同一機体の再読取・再選択時にユーザーが入力・設定した名称を既定名で勝手に上書きしない（Issue #48）
+        if (
+          cleanId === regNodeId &&
+          prev &&
+          prev !== getDefaultNodeName(cleanId)
+        ) {
+          return prev;
+        }
+        return getDefaultNodeName(cleanId);
+      });
       setCapturedTime(nowStr);
       setNfcTagDetectedId(isPhysicalNfc ? cleanId : null);
       setActiveTab("register");
@@ -571,7 +581,7 @@ export function MobileHome({
           : `🔘 ${sourceLabel}により機体「${cleanId}」を選択しました。下の登録ボタンで設置を確定してください。`,
       );
     },
-    [],
+    [regNodeId],
   );
 
   // Web NFC API (NDEFReader) による物理NFCタグのスキャン
@@ -763,51 +773,102 @@ export function MobileHome({
       }
 
       if (response.status === HTTP_CONFLICT) {
-        const queryParams = new URLSearchParams({
-          q: item.sensor_code,
-          limit: String(SENSOR_LIST_LIMIT),
-        });
-        const listRes = await fetch(
-          `/api/test-sensors?${queryParams.toString()}`,
-          {
-            cache: "no-store",
-            headers,
-          },
-        );
-        if (listRes.status === 401 || listRes.status === 403) {
-          return "unauthorized";
-        }
-        if (listRes.ok) {
-          const listData = (await listRes.json()) as {
-            items?: Array<{ id: string; sensor_code: string }>;
-          };
-          const existing = listData.items?.find(
-            (sensorItem) =>
-              sensorItem.sensor_code.toUpperCase() ===
-              item.sensor_code.toUpperCase(),
+        // next_cursor を安全に追跡して200件超の環境でも確実に既存機体を特定する（Issue #48）
+        let existing: {
+          id: string;
+          sensor_code: string;
+          name?: string;
+          latitude?: number;
+          longitude?: number;
+        } | null = null;
+        let nextCursor: string | null = null;
+        do {
+          const queryParams = new URLSearchParams({
+            q: item.sensor_code,
+            limit: String(SENSOR_LIST_LIMIT),
+          });
+          if (nextCursor) {
+            queryParams.set("cursor", nextCursor);
+          }
+          const listRes = await fetch(
+            `/api/test-sensors?${queryParams.toString()}`,
+            {
+              cache: "no-store",
+              headers,
+            },
           );
-          if (existing) {
-            const patchRes = await fetch(
-              `/api/test-sensors/${encodeURIComponent(existing.id)}`,
-              {
-                method: "PATCH",
-                headers,
-                body: JSON.stringify({
-                  name: item.name,
-                  latitude: item.latitude,
-                  longitude: item.longitude,
-                }),
-              },
-            );
-            if (patchRes.ok) {
-              return "updated";
-            }
-            if (patchRes.status === 401 || patchRes.status === 403) {
-              return "unauthorized";
-            }
-            if (patchRes.status === 422 || patchRes.status === 400) {
-              return "validation_error";
-            }
+          if (listRes.status === 401 || listRes.status === 403) {
+            return "unauthorized";
+          }
+          if (!listRes.ok) break;
+
+          const listData = (await listRes.json()) as {
+            items?: Array<{
+              id: string;
+              sensor_code: string;
+              name?: string;
+              latitude?: number;
+              longitude?: number;
+            }>;
+            next_cursor?: string | null;
+          };
+          existing =
+            listData.items?.find(
+              (sensorItem) =>
+                sensorItem.sensor_code.toUpperCase() ===
+                item.sensor_code.toUpperCase(),
+            ) ?? null;
+          nextCursor = existing ? null : (listData.next_cursor ?? null);
+        } while (nextCursor);
+
+        if (existing) {
+          // 人が明示的に設定した名称が既定名で勝手に上書きされるのを防止（Issue #48）
+          const isDefaultName =
+            item.name === getDefaultNodeName(item.sensor_code);
+          const shouldUpdateName =
+            !isDefaultName &&
+            item.name.trim().length > 0 &&
+            item.name !== existing.name;
+
+          // 座標も名称も変更がない同一要求の再送時は不要なPATCHをスキップして冪等に成功（Issue #48）
+          const isSameCoordinate =
+            existing.latitude !== undefined &&
+            existing.longitude !== undefined &&
+            Math.abs(existing.latitude - item.latitude) < 0.000001 &&
+            Math.abs(existing.longitude - item.longitude) < 0.000001;
+
+          if (!shouldUpdateName && isSameCoordinate) {
+            return "updated";
+          }
+
+          const patchPayload: {
+            name?: string;
+            latitude: number;
+            longitude: number;
+          } = {
+            latitude: item.latitude,
+            longitude: item.longitude,
+          };
+          if (shouldUpdateName) {
+            patchPayload.name = item.name;
+          }
+
+          const patchRes = await fetch(
+            `/api/test-sensors/${encodeURIComponent(existing.id)}`,
+            {
+              method: "PATCH",
+              headers,
+              body: JSON.stringify(patchPayload),
+            },
+          );
+          if (patchRes.ok) {
+            return "updated";
+          }
+          if (patchRes.status === 401 || patchRes.status === 403) {
+            return "unauthorized";
+          }
+          if (patchRes.status === 422 || patchRes.status === 400) {
+            return "validation_error";
           }
         }
       }

@@ -328,4 +328,174 @@ describe("MobileHome", () => {
       }),
     );
   });
+
+  it("409 Conflict時にnext_cursorを追跡して200件超の既存機体を特定・更新できる (Issue #48)", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    let pageCount = 0;
+
+    fetchSpy.mockImplementation(async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : "";
+      if (url.includes("/api/test-baseline")) {
+        return new Response(
+          JSON.stringify({ baselines: {}, activeAlerts: {} }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+      if (
+        url.includes("/api/test-sensors") &&
+        (!init || init.method === "POST")
+      ) {
+        return new Response(
+          JSON.stringify({ detail: "sensor code already exists" }),
+          {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+      if (url.includes("/api/test-sensors") && init?.method === "PATCH") {
+        return new Response(
+          JSON.stringify({ id: "target-sensor-t1", sensor_code: "T1" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/test-sensors")) {
+        pageCount += 1;
+        if (pageCount === 1) {
+          // 1ページ目 (200件) -> 該当なし、next_cursorあり
+          return new Response(
+            JSON.stringify({
+              items: [{ id: "other-1", sensor_code: "OTHER1" }],
+              next_cursor: "cursor-page-2",
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        // 2ページ目 (201件目以降) -> T1発見！
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "target-sensor-t1",
+                sensor_code: "T1",
+                name: "カスタム名称元木01",
+                latitude: 34.0,
+                longitude: 136.0,
+              },
+            ],
+            next_cursor: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    render(
+      <MobileHome dataMode="test" initialNodeId="T1" initialTab="register" />,
+    );
+
+    const submitBtn = screen.getByRole("button", {
+      name: "この位置・時刻で機体を固定登録",
+    });
+    fireEvent.click(submitBtn);
+
+    // 2ページ目を経由して再設置更新に成功すること
+    expect(
+      await screen.findByText(/再設置更新.*に更新しました/),
+    ).toBeInTheDocument();
+
+    // PATCH 呼び出しが 2ページ目で特定した ID target-sensor-t1 に対して行われ、カスタム名称を既定名で上書きしていないこと
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/test-sensors/target-sensor-t1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.not.stringContaining("タニ装着ノード"),
+      }),
+    );
+  });
+
+  it("同一座標の再送時は不要なPATCHをスキップして冪等に成功する (Issue #48)", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    let patchCalled = false;
+
+    fetchSpy.mockImplementation(async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : "";
+      if (url.includes("/api/test-baseline")) {
+        return new Response(
+          JSON.stringify({ baselines: {}, activeAlerts: {} }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+      if (
+        url.includes("/api/test-sensors") &&
+        (!init || init.method === "POST")
+      ) {
+        return new Response(
+          JSON.stringify({ detail: "sensor code already exists" }),
+          {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+      if (url.includes("/api/test-sensors") && init?.method === "PATCH") {
+        patchCalled = true;
+        return new Response(JSON.stringify({ id: "target-sensor-t1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/api/test-sensors")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "target-sensor-t1",
+                sensor_code: "T1",
+                name: "タニ装着ノード（木ノードT1）",
+                latitude: 35.15421,
+                longitude: 136.96642,
+              },
+            ],
+            next_cursor: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200 });
+    });
+
+    render(
+      <MobileHome dataMode="test" initialNodeId="T1" initialTab="register" />,
+    );
+
+    const submitBtn = screen.getByRole("button", {
+      name: "この位置・時刻で機体を固定登録",
+    });
+    fireEvent.click(submitBtn);
+
+    // 不要な PATCH を発行せず冪等に成功すること
+    expect(
+      await screen.findByText(/再設置更新.*に更新しました/),
+    ).toBeInTheDocument();
+    // PATCH が呼ばれていないこと（冪等性）
+    expect(patchCalled).toBe(false);
+  });
 });
