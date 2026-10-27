@@ -73,9 +73,7 @@ describe("MobileHome", () => {
 
     const regTabBtn = screen.getByRole("tab", { name: "📍 機体GPS設置登録" });
     fireEvent.click(regTabBtn);
-
-    expect(screen.getByText("機体GPS・時刻固定登録")).toBeInTheDocument();
-
+    expect(screen.getByText("機体の設置登録")).toBeInTheDocument();
     // Default venue coordinates are pre-populated so submit button is immediately touchable (not disabled)
     const submitBtn = screen.getByRole("button", {
       name: "この位置・時刻で機体を固定登録",
@@ -121,17 +119,15 @@ describe("MobileHome", () => {
     fireEvent.click(baselineBtn);
 
     // Baseline should now be confirmed
-    expect(screen.getByText(/🎯 基準姿勢確定済み/)).toBeInTheDocument();
-    expect(screen.getByText(/ax=10, ay=20, az=980 mg/)).toBeInTheDocument();
-    expect(screen.getByText(/\(基準差\)/)).toBeInTheDocument();
+    expect(screen.getByText(/🎯 直立基準（0°）確定済み/)).toBeInTheDocument();
+    expect(screen.getByText(/🟢 正常・直立/)).toBeInTheDocument();
   });
 
   it("未受信の実機テストモード（S1）では架空の 3280 mV / 1420 ADC を表示せず、基準確定も拒否する (Issue #27)", async () => {
     render(<MobileHome dataMode="test" initialNodeId="S1" />);
 
     expect(screen.queryByText(/3280 mV/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/1420 ADC/)).not.toBeInTheDocument();
-    expect(screen.getAllByText("待機中")).toHaveLength(3);
+    expect(screen.queryByText(/1420/)).not.toBeInTheDocument();
 
     const baselineBtn = screen.getByRole("button", {
       name: /タニ直立時の姿勢を「基準姿勢」に確定/,

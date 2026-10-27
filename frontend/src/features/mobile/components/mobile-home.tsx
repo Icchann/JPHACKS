@@ -984,8 +984,10 @@ export function MobileHome({
                 <h2 className={styles.alertHeading}>大きな姿勢変化を検知！</h2>
                 <p className={styles.alertDetail}>{alertReason}</p>
                 <div className={styles.actionGuide}>
-                  <strong>作業員へ退避指示を発令してください</strong>
-                  <span>周囲の斜面崩壊・倒木・滑落に注意してください</span>
+                  <strong>現地の状況や機体の傾きを確認してください</strong>
+                  <span>
+                    本警報は現地確認の参考情報です。周囲の安全を確認して行動してください
+                  </span>
                 </div>
                 <button
                   className={styles.calibrateAlarmBtn}
@@ -1048,24 +1050,24 @@ export function MobileHome({
                           latestObs.az_mg === 0
                           ? "初期化中 (全軸0)"
                           : relativeTiltDeg !== null
-                            ? `+${relativeTiltDeg.toFixed(1)}° (${currentBaseline ? "基準差" : "基準未設定・仮算出"})`
+                            ? `${relativeTiltDeg < 5.0 ? "🟢 正常・直立" : relativeTiltDeg < 15.0 ? "🟡 注意・傾き変化" : "🔴 警戒・大きな傾斜"} (+${relativeTiltDeg.toFixed(1)}°)`
                             : "計算不可"
                         : "待機中"}
                     </strong>
                   </div>
                   <div className={styles.metricItem}>
-                    <span>土壌水分生値</span>
+                    <span>地面の湿り気 (土壌水分)</span>
                     <strong>
                       {latestObs
                         ? latestObs.soil_raw === null ||
                           latestObs.soil_raw === UNCONNECTED_RAW_SENTINEL
-                          ? "未計測 (未接続)"
-                          : `${latestObs.soil_raw} ADC`
+                          ? "未計測 (センサー未接続)"
+                          : `${latestObs.soil_raw} (接続中)`
                         : "待機中"}
                     </strong>
                   </div>
                   <div className={styles.metricItem}>
-                    <span>電池電圧</span>
+                    <span>機体バッテリー</span>
                     <strong>
                       {latestObs
                         ? latestObs.battery_mv === null ||
@@ -1080,13 +1082,12 @@ export function MobileHome({
                 <div className={styles.baselineBox}>
                   {currentBaseline ? (
                     <div className={styles.baselineStatus}>
-                      <span>
-                        🎯 基準姿勢確定済み ({currentBaseline.setAt}):
+                      <span className={styles.baselineConfirmedTitle}>
+                        🎯 直立基準（0°）確定済み
                       </span>
-                      <code>
-                        ax={currentBaseline.ax}, ay={currentBaseline.ay}, az=
-                        {currentBaseline.az} mg
-                      </code>
+                      <span className={styles.baselineConfirmedMeta}>
+                        確定時刻: {currentBaseline.setAt}
+                      </span>
                       <button
                         type="button"
                         className={styles.resetBaselineBtn}
@@ -1094,7 +1095,7 @@ export function MobileHome({
                           void setBaselinePosture();
                         }}
                       >
-                        現在の姿勢で基準を再設定
+                        今の姿勢で0°基準を再設定
                       </button>
                     </div>
                   ) : (
@@ -1105,28 +1106,29 @@ export function MobileHome({
                         void setBaselinePosture();
                       }}
                     >
-                      🎯 タニ直立時の姿勢を「基準姿勢」に確定（現在:
-                      基準未設定）
+                      🎯 タニ直立時の姿勢を「基準姿勢」に確定
                     </button>
                   )}
                 </div>
 
-                <div className={styles.testActionBlock}>
-                  <span className={styles.testHint}>
-                    実演ピッチ用テスト操作:
-                  </span>
-                  <button
-                    className={styles.triggerTestBtn}
-                    onClick={() =>
-                      triggerAlarm(
-                        "タニさんが体を20°傾けました（模擬倒木検知実演）",
-                      )
-                    }
-                    type="button"
-                  >
-                    ⚠️ 警報アラートを実演テスト発火
-                  </button>
-                </div>
+                <details className={styles.devToolsDetails}>
+                  <summary className={styles.devToolsSummary}>
+                    🛠️ 実演ピッチ用テスト操作（通常現場では使用しません）
+                  </summary>
+                  <div className={styles.testActionBlock}>
+                    <button
+                      className={styles.triggerTestBtn}
+                      onClick={() =>
+                        triggerAlarm(
+                          "タニさんが体を20°傾けました（模擬倒木検知実演）",
+                        )
+                      }
+                      type="button"
+                    >
+                      ⚠️ 警報アラートを実演テスト発火
+                    </button>
+                  </div>
+                </details>
               </div>
             )}
           </section>
@@ -1137,9 +1139,9 @@ export function MobileHome({
             aria-label="機体GPS設置登録"
           >
             <header className={styles.regHeader}>
-              <h2>機体GPS・時刻固定登録</h2>
+              <h2>機体の設置登録</h2>
               <p>
-                NFCタグによる機体自動識別と、スマホ内蔵GPS・時計で設置情報を登録します
+                機体番号を選び、「現在地GPSと時刻を取得」を押して登録してください
               </p>
             </header>
 
@@ -1257,40 +1259,12 @@ export function MobileHome({
 
               <div className={styles.capturedSummary}>
                 <div className={styles.summaryRow}>
-                  <span>取得緯度:</span>
+                  <span>記録緯度:</span>
                   <strong>{capturedLat}° N</strong>
                 </div>
                 <div className={styles.summaryRow}>
-                  <span>取得経度:</span>
+                  <span>記録経度:</span>
                   <strong>{capturedLon}° E</strong>
-                </div>
-                <div className={styles.coordEditRow}>
-                  <label className={styles.coordInputLabel}>
-                    <span>緯度調整</span>
-                    <input
-                      aria-label="設置緯度"
-                      type="number"
-                      step="0.000001"
-                      className={styles.coordInput}
-                      value={capturedLat}
-                      onChange={(changeEvent) =>
-                        setCapturedLat(changeEvent.target.value)
-                      }
-                    />
-                  </label>
-                  <label className={styles.coordInputLabel}>
-                    <span>経度調整</span>
-                    <input
-                      aria-label="設置経度"
-                      type="number"
-                      step="0.000001"
-                      className={styles.coordInput}
-                      value={capturedLon}
-                      onChange={(changeEvent) =>
-                        setCapturedLon(changeEvent.target.value)
-                      }
-                    />
-                  </label>
                 </div>
                 <div className={styles.summaryRow}>
                   <span>設置時刻:</span>
@@ -1343,29 +1317,34 @@ export function MobileHome({
               </div>
             )}
 
-            {/* 機体NFCタグへのURL書込・発行セクション */}
-            <div className={styles.nfcWriteBox}>
-              <strong>🏷️ 機体「{regNodeId}」用NFCタグURL（NDEF書込用）</strong>
-              <code className={styles.nfcUrlCode}>{nfcDeepLinkUrl}</code>
-              <div className={styles.nfcWriteActions}>
-                <button
-                  type="button"
-                  className={styles.nfcCopyBtn}
-                  onClick={handleCopyNfcUrl}
-                >
-                  {nfcUrlCopied ? "✓ コピー完了" : "📋 NFC登録URLをコピー"}
-                </button>
-                <button
-                  type="button"
-                  className={styles.nfcWriteBtn}
-                  onClick={() => {
-                    void handleWriteNfcTag();
-                  }}
-                >
-                  📲 NFCタグへURLを書込
-                </button>
+            {/* 機体NFCタグへのURL書込・発行セクション（事務所用ツールとして折りたたみ隔離） */}
+            <details className={styles.devToolsDetails}>
+              <summary className={styles.devToolsSummary}>
+                🏷️ 機体NFCタグURL書込ツール（事務所用）
+              </summary>
+              <div className={styles.nfcWriteBox}>
+                <strong>機体「{regNodeId}」用NFCタグURL（NDEF書込用）</strong>
+                <code className={styles.nfcUrlCode}>{nfcDeepLinkUrl}</code>
+                <div className={styles.nfcWriteActions}>
+                  <button
+                    type="button"
+                    className={styles.nfcCopyBtn}
+                    onClick={handleCopyNfcUrl}
+                  >
+                    {nfcUrlCopied ? "✓ コピー完了" : "📋 NFC登録URLをコピー"}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.nfcWriteBtn}
+                    onClick={() => {
+                      void handleWriteNfcTag();
+                    }}
+                  >
+                    📲 NFCタグへURLを書込
+                  </button>
+                </div>
               </div>
-            </div>
+            </details>
           </section>
         )}
       </main>

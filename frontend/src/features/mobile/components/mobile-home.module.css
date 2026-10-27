@@ -80,9 +80,9 @@
 }
 
 .tabBtn {
-  min-height: 48px;
-  font-size: 0.95rem;
-  font-weight: 600;
+  min-height: 56px;
+  font-size: 1.05rem;
+  font-weight: 700;
   color: #64748b;
   background: #f1f5f9;
   border: 1px solid #cbd5e1;
@@ -167,8 +167,8 @@
 
 .calibrateAlarmBtn {
   width: 100%;
-  min-height: 56px;
-  font-size: 1.05rem;
+  min-height: 60px;
+  font-size: 1.1rem;
   font-weight: 800;
   color: #854d0e;
   background-color: #fef08a;
@@ -185,9 +185,9 @@
 
 .dismissAlarmBtn {
   width: 100%;
-  min-height: 56px;
+  min-height: 60px;
   font-size: 1.15rem;
-  font-weight: 700;
+  font-weight: 800;
   color: #dc2626;
   background-color: #ffffff;
   border: none;
@@ -241,16 +241,17 @@
 }
 
 .miniNodeBtn {
-  padding: 4px 10px;
-  font-size: 0.8rem;
+  min-height: 48px;
+  min-width: 48px;
+  padding: 8px 14px;
+  font-size: 1rem;
   font-weight: 700;
   border: 1px solid #cbd5e1;
   background: #f1f5f9;
   color: #334155;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
 }
-
 .activeMiniBtn {
   background: #15803d;
   color: #ffffff;
@@ -290,10 +291,9 @@
 
 .setBaselineBtn {
   width: 100%;
-  min-height: 52px;
-  font-size: 1rem;
+  min-height: 60px;
+  font-size: 1.1rem;
   font-weight: 700;
-  color: #ffffff;
   background-color: #0d9488;
   border: none;
   border-radius: 10px;
@@ -323,16 +323,28 @@
 }
 
 .resetBaselineBtn {
-  margin-top: 6px;
+  margin-top: 8px;
   align-self: flex-start;
-  background: transparent;
-  border: 1px solid #0d9488;
+  background: #ffffff;
+  border: 2px solid #0d9488;
   color: #0d9488;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  min-height: 52px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
   cursor: pointer;
+}
+
+.baselineConfirmedTitle {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f766e;
+}
+
+.baselineConfirmedMeta {
+  font-size: 0.85rem;
+  color: #0d9488;
 }
 .testActionBlock {
   padding-top: 16px;
@@ -450,8 +462,8 @@
 }
 .nfcScanBigBtn {
   width: 100%;
-  min-height: 52px;
-  font-size: 1rem;
+  min-height: 56px;
+  font-size: 1.05rem;
   font-weight: 700;
   color: #ffffff;
   background-color: #0d9488;
@@ -526,11 +538,10 @@
 }
 
 .nodeChip {
-  min-height: 44px;
-  font-size: 1rem;
-  font-weight: 700;
+  min-height: 56px;
+  font-size: 1.1rem;
+  font-weight: 800;
   background-color: #ffffff;
-  border: 1px solid #cbd5e1;
   border-radius: 8px;
   color: #334155;
   cursor: pointer;
@@ -550,9 +561,9 @@
 }
 
 .captureGpsBigBtn {
-  min-height: 54px;
-  font-size: 1.05rem;
-  font-weight: 700;
+  min-height: 60px;
+  font-size: 1.1rem;
+  font-weight: 800;
   color: #ffffff;
   background-color: #2563eb;
   border: none;
@@ -567,9 +578,9 @@
 }
 
 .venuePresetBtn {
-  min-height: 44px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  min-height: 52px;
+  font-size: 0.95rem;
+  font-weight: 700;
   color: #475569;
   background-color: #f8fafc;
   border: 1px solid #cbd5e1;
@@ -619,11 +630,10 @@
 }
 
 .submitRegistrationBtn {
-  min-height: 54px;
-  font-size: 1.05rem;
-  font-weight: 700;
+  min-height: 64px;
+  font-size: 1.15rem;
+  font-weight: 800;
   color: #ffffff;
-  background-color: #16a34a;
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -655,9 +665,9 @@
 }
 
 .syncPendingBtn {
-  min-height: 46px;
-  font-size: 0.95rem;
-  font-weight: 700;
+  min-height: 56px;
+  font-size: 1.05rem;
+  font-weight: 800;
   color: #ffffff;
   background-color: #d97706;
   border: none;
@@ -666,12 +676,29 @@
   touch-action: manipulation;
 }
 
-.nfcWriteBox {
+.devToolsDetails {
   margin-top: 16px;
-  padding: 12px;
   background-color: #f8fafc;
   border: 1px dashed #cbd5e1;
   border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.devToolsSummary {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.nfcWriteBox {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
