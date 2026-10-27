@@ -16,7 +16,7 @@ const MUTATION_METHODS: Record<string, true> = {
 };
 
 // LAN公開時に第三者サイトからのCSRFや無認証での台帳改変・削除を防ぐため、変更系リクエストにOrigin検証とトークン検証を課します。
-function validateMutationRequest(
+export function validateMutationRequest(
   method: string,
   request?: Request,
 ): NextResponse | null {

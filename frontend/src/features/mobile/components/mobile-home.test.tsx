@@ -73,9 +73,7 @@ describe("MobileHome", () => {
 
     const regTabBtn = screen.getByRole("tab", { name: "📍 機体GPS設置登録" });
     fireEvent.click(regTabBtn);
-
-    expect(screen.getByText("機体GPS・時刻固定登録")).toBeInTheDocument();
-
+    expect(screen.getByText("機体の設置登録")).toBeInTheDocument();
     // Default venue coordinates are pre-populated so submit button is immediately touchable (not disabled)
     const submitBtn = screen.getByRole("button", {
       name: "この位置・時刻で機体を固定登録",
@@ -84,11 +82,10 @@ describe("MobileHome", () => {
     expect(screen.getByText("35.154210° N")).toBeInTheDocument();
     expect(screen.getByText("136.966420° E")).toBeInTheDocument();
 
-    // Identify S1 via NFC tag button
+    // Identify S1 via chip button
     const s1Chip = screen.getByRole("button", { name: "S1" });
     fireEvent.click(s1Chip);
-    expect(screen.getByText("NFC認識済: S1")).toBeInTheDocument();
-
+    expect(screen.getByText(/手動選択:\s*S1/)).toBeInTheDocument();
     // Submit registration
     fireEvent.click(submitBtn);
     expect(
@@ -122,17 +119,15 @@ describe("MobileHome", () => {
     fireEvent.click(baselineBtn);
 
     // Baseline should now be confirmed
-    expect(screen.getByText(/🎯 基準姿勢確定済み/)).toBeInTheDocument();
-    expect(screen.getByText(/ax=10, ay=20, az=980 mg/)).toBeInTheDocument();
-    expect(screen.getByText(/\(基準差\)/)).toBeInTheDocument();
+    expect(screen.getByText(/🎯 直立基準（0°）確定済み/)).toBeInTheDocument();
+    expect(screen.getByText(/🟢 正常・直立/)).toBeInTheDocument();
   });
 
   it("未受信の実機テストモード（S1）では架空の 3280 mV / 1420 ADC を表示せず、基準確定も拒否する (Issue #27)", async () => {
     render(<MobileHome dataMode="test" initialNodeId="S1" />);
 
     expect(screen.queryByText(/3280 mV/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/1420 ADC/)).not.toBeInTheDocument();
-    expect(screen.getAllByText("待機中")).toHaveLength(3);
+    expect(screen.queryByText(/1420/)).not.toBeInTheDocument();
 
     const baselineBtn = screen.getByRole("button", {
       name: /タニ直立時の姿勢を「基準姿勢」に確定/,
@@ -188,5 +183,53 @@ describe("MobileHome", () => {
     expect(
       screen.queryByText(/スマホ内に保存しました/),
     ).not.toBeInTheDocument();
+  });
+
+  it("Web NFC 非対応環境でスキャンボタンを押した際に成功偽装せず、正直な案内メッセージを表示する (Issue #42)", () => {
+    // window.NDEFReader が未定義の環境（iOS Safari、HTTP接続等）
+    delete window.NDEFReader;
+
+    render(
+      <MobileHome dataMode="test" initialNodeId="T1" initialTab="register" />,
+    );
+
+    const scanBtn = screen.getByRole("button", {
+      name: "📲 NFCタグをスキャンして機体を識別",
+    });
+    fireEvent.click(scanBtn);
+
+    // 虚偽の「NFCタグ識別により機体を識別しました」が表示されないこと
+    expect(
+      screen.queryByText(/NFCタグ識別により機体.*を識別しました/),
+    ).not.toBeInTheDocument();
+    // 正直な非対応案内メッセージが表示されること
+    expect(
+      screen.getByText(
+        /ご利用のブラウザ・環境はWeb NFC直接読取に対応していません/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("GPS未測位・会場プリセット時に ±5m 等の架空精度を表示せず、未測位と明示する (Issue #42)", () => {
+    render(
+      <MobileHome dataMode="test" initialNodeId="T1" initialTab="register" />,
+    );
+
+    // 初期表示で架空の精度（±3m、±5m等）が表示されないこと
+    expect(screen.queryByText(/±[0-9]+m/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("未測位（参考プリセット座標）"),
+    ).toBeInTheDocument();
+
+    // 会場プリセットボタンを押しても架空精度は付与されないこと
+    const presetBtn = screen.getByRole("button", {
+      name: "🏛️ 会場（名古屋）座標を即時セット",
+    });
+    fireEvent.click(presetBtn);
+
+    expect(screen.queryByText(/±[0-9]+m/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("未測位（参考プリセット座標）"),
+    ).toBeInTheDocument();
   });
 });

@@ -93,14 +93,12 @@ const DEFAULT_MOUNTAIN_BOUNDS: MountainBounds = {
 };
 
 // 工区外・現地仮設スロット領域のレイアウト定数
-const OFF_SITE_SLOT_START_X = 180;
-const OFF_SITE_SLOT_STEP_X = 140;
-const OFF_SITE_SLOT_Y = SVG_HEIGHT - 48;
 const OFF_SITE_BAR_X = 24;
-const OFF_SITE_BAR_Y = SVG_HEIGHT - 84;
 const OFF_SITE_BAR_WIDTH = SVG_WIDTH - 48;
-const OFF_SITE_BAR_HEIGHT = 72;
+const OFF_SITE_BAR_HEIGHT = 82;
+const OFF_SITE_BAR_Y = SVG_HEIGHT - 92;
 const OFF_SITE_BAR_BORDER_RADIUS = 8;
+const OFF_SITE_CONTENT_PADDING = 48;
 
 // 林業現場の森林基本図・等高線地形図に即した、完全オフライン山林マップ
 export function OfflineMountainMap({
@@ -269,21 +267,42 @@ export function OfflineMountainMap({
 
   // 各センサーが固定工区BBox内に収まっているか判定し、工区外の機体は下部の仮設スロットへ整列配置する
   const positionedSensors = useMemo(() => {
-    const offSiteSensorIds = sensors
-      .filter(
-        (sensor) =>
-          !(
-            sensor.latitude >= fixedBounds.minLat &&
-            sensor.latitude <= fixedBounds.maxLat &&
-            sensor.longitude >= fixedBounds.minLon &&
-            sensor.longitude <= fixedBounds.maxLon
-          ),
-      )
-      .map((sensor) => sensor.id);
+    const offSiteSensorsList = sensors.filter(
+      (sensor) =>
+        !(
+          sensor.latitude >= fixedBounds.minLat &&
+          sensor.latitude <= fixedBounds.maxLat &&
+          sensor.longitude >= fixedBounds.minLon &&
+          sensor.longitude <= fixedBounds.maxLon
+        ),
+    );
+    const offSiteCount = offSiteSensorsList.length;
+
+    // スロット内で利用可能な横幅（パディング分を除く）
+    const availableWidth = OFF_SITE_BAR_WIDTH - OFF_SITE_CONTENT_PADDING * 2;
+    // 台数に応じたステップ幅（最大130px、台数が多い場合は枠内に均等縮小）
+    const stepX =
+      offSiteCount > 1 ? Math.min(130, availableWidth / (offSiteCount - 1)) : 0;
+    const totalSpan = (offSiteCount - 1) * stepX;
+    // 中央揃えで配置開始Xを計算
+    const startX =
+      OFF_SITE_BAR_X +
+      OFF_SITE_CONTENT_PADDING +
+      (availableWidth - totalSpan) / 2;
+
+    const offSitePositions = new Map<string, { x: number; y: number }>();
+    offSiteSensorsList.forEach((sensor, index) => {
+      // 台数が多くステップが狭い場合は上下2段にジグザグ配置してアラートピル・タグの衝突を防止
+      const isDense = stepX > 0 && stepX < 110;
+      const yOffset = isDense ? (index % 2 === 0 ? -10 : 12) : 0;
+      const x = offSiteCount === 1 ? SVG_WIDTH / 2 : startX + index * stepX;
+      const y = OFF_SITE_BAR_Y + 50 + yOffset;
+      offSitePositions.set(sensor.id, { x, y });
+    });
 
     return sensors.map((sensor) => {
-      const offSiteSlotIndex = offSiteSensorIds.indexOf(sensor.id);
-      if (offSiteSlotIndex === -1) {
+      const offSitePos = offSitePositions.get(sensor.id);
+      if (!offSitePos) {
         return {
           sensor,
           position: project(sensor.latitude, sensor.longitude),
@@ -291,13 +310,9 @@ export function OfflineMountainMap({
         };
       }
 
-      const slotPosition = {
-        x: OFF_SITE_SLOT_START_X + offSiteSlotIndex * OFF_SITE_SLOT_STEP_X,
-        y: OFF_SITE_SLOT_Y,
-      };
       return {
         sensor,
-        position: slotPosition,
+        position: offSitePos,
         isOffSite: true,
       };
     });
@@ -595,6 +610,15 @@ export function OfflineMountainMap({
             const opacity = getLayerOpacity(overlayPath.layerId);
             if (opacity === LAYER_OPACITY_HIDDEN) return null;
 
+            // 工区外の線（すべての座標が fixedBounds から外れている）は描画しない
+            const hasInBoundCoordinate = overlayPath.coordinates.some(
+              (coordinate) =>
+                coordinate.latitude >= fixedBounds.minLat &&
+                coordinate.latitude <= fixedBounds.maxLat &&
+                coordinate.longitude >= fixedBounds.minLon &&
+                coordinate.longitude <= fixedBounds.maxLon,
+            );
+            if (!hasInBoundCoordinate) return null;
             const pointsString = overlayPath.coordinates
               .map((coordinate) => {
                 const projectedPoint = project(
@@ -654,6 +678,13 @@ export function OfflineMountainMap({
             const opacity = getLayerOpacity(overlayPoint.layerId);
             if (opacity === LAYER_OPACITY_HIDDEN) return null;
 
+            // 工区外の点は描画しない
+            const isInBounds =
+              overlayPoint.latitude >= fixedBounds.minLat &&
+              overlayPoint.latitude <= fixedBounds.maxLat &&
+              overlayPoint.longitude >= fixedBounds.minLon &&
+              overlayPoint.longitude <= fixedBounds.maxLon;
+            if (!isInBounds) return null;
             const projectedPosition = project(
               overlayPoint.latitude,
               overlayPoint.longitude,
@@ -710,10 +741,13 @@ export function OfflineMountainMap({
                 />
                 <text
                   className={styles.offSiteSlotTitle}
-                  x={OFF_SITE_BAR_X + 14}
-                  y={OFF_SITE_BAR_Y + 20}
+                  x={OFF_SITE_BAR_X + 16}
+                  y={OFF_SITE_BAR_Y + 18}
                 >
                   📍 工区外・現地仮設スロット（参考配置）
+                  <tspan className={styles.offSiteSlotCount}>
+                    {` (${positionedSensors.filter((s) => s.isOffSite).length}台)`}
+                  </tspan>
                 </text>
               </g>
             )}

@@ -448,6 +448,11 @@
   font-weight: 700;
   fill: #4b382a;
 }
+.offSiteSlotCount {
+  font-size: 10px;
+  font-weight: 500;
+  fill: #735d46;
+}
 
 /* 森林基本図の外部凡例バー（地図・ピンとの重なりやズーム肥大化を防止） */
 .externalLegendBar {

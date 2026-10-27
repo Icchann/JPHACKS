@@ -26,8 +26,8 @@ describe("/api/test-baseline route (Issue #29)", () => {
       // 一時ファイル削除失敗時は無視
     }
     delete process.env.SANMOU_BASELINE_STATE_PATH;
+    delete process.env.SANMOU_OPERATOR_TOKEN;
   });
-
   it("空オブジェクト {} や全軸ゼロ（ax=0, ay=0, az=0）の基準登録リクエストを HTTP 400 で拒否する", async () => {
     const emptyResponse = await POST(
       new Request("http://localhost:3000/api/test-baseline", {
@@ -146,5 +146,118 @@ describe("/api/test-baseline route (Issue #29)", () => {
     };
     expect(getData.baseline?.az).toBe(995);
     expect(getData.activeAlerts).toEqual({});
+  });
+
+  it("setAt未指定時のデフォルト値が有効なISO 8601 UTC文字列として保存される (Issue #45)", async () => {
+    const response = await POST(
+      new Request("http://localhost:3000/api/test-baseline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          node_id: "T1",
+          ax: -128,
+          ay: -112,
+          az: 944,
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as {
+      baseline: { setAt: string };
+    };
+    expect(data.baseline.setAt).toBeDefined();
+    // Date.parse が NaN にならず有効な数値として解釈できること
+    const parsedEpoch = Date.parse(data.baseline.setAt);
+    expect(Number.isFinite(parsedEpoch)).toBe(true);
+    // ISO 8601 形式（YYYY-MM-DDTHH:mm:ss.sssZ）であること
+    expect(data.baseline.setAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/,
+    );
+  });
+
+  it("SANMOU_OPERATOR_TOKEN設定時に無認証のPOST/DELETEを401で拒否し、トークン付きを許可する (Issue #41)", async () => {
+    process.env.SANMOU_OPERATOR_TOKEN = "secret-field-token";
+
+    // 1. トークンなしのPOSTは 401
+    const unauthPost = await POST(
+      new Request("http://localhost:3000/api/test-baseline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          node_id: "T1",
+          ax: 10,
+          ay: 20,
+          az: 980,
+        }),
+      }),
+    );
+    expect(unauthPost.status).toBe(401);
+
+    // 2. トークンなしのDELETEも 401
+    const unauthDelete = DELETE(
+      new Request("http://localhost:3000/api/test-baseline?node_id=T1", {
+        method: "DELETE",
+      }),
+    );
+    expect(unauthDelete.status).toBe(401);
+
+    // 3. 正しい X-Sanmou-Operator-Token ヘッダー付きPOSTは 200
+    const authPost = await POST(
+      new Request("http://localhost:3000/api/test-baseline", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Sanmou-Operator-Token": "secret-field-token",
+        },
+        body: JSON.stringify({
+          node_id: "T1",
+          ax: 10,
+          ay: 20,
+          az: 980,
+        }),
+      }),
+    );
+    expect(authPost.status).toBe(200);
+
+    // 4. 正しいクエリパラメータ付きDELETEは 200
+    const authDelete = DELETE(
+      new Request(
+        "http://localhost:3000/api/test-baseline?node_id=T1&operator_token=secret-field-token",
+        {
+          method: "DELETE",
+        },
+      ),
+    );
+    expect(authDelete.status).toBe(200);
+  });
+
+  it("不正なOriginヘッダーを持つPOST/DELETEを403で拒否する (Issue #41)", async () => {
+    // 異なるオリジンからのCSRFリクエスト
+    const crossOriginPost = await POST(
+      new Request("http://localhost:3000/api/test-baseline", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://attacker.example.com",
+        },
+        body: JSON.stringify({
+          node_id: "T1",
+          ax: 10,
+          ay: 20,
+          az: 980,
+        }),
+      }),
+    );
+    expect(crossOriginPost.status).toBe(403);
+
+    const crossOriginDelete = DELETE(
+      new Request("http://localhost:3000/api/test-baseline", {
+        method: "DELETE",
+        headers: {
+          Origin: "http://attacker.example.com",
+        },
+      }),
+    );
+    expect(crossOriginDelete.status).toBe(403);
   });
 });

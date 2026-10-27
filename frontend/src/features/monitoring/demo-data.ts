@@ -10,7 +10,24 @@ import type {
 } from "./types";
 
 // 座標・名称・観測値はすべて開発用の架空データです。
+// ※ 注意（Issue #44 / AGENTS.md §5.5 準拠）:
+// 「白神山地 第3工区」の Bounds（34.985〜35.022, 136.982〜137.032）は、JPHACKS 名古屋会場での
+// 実証デモおよび固定工区グリッド投影（案C）のための参考プリセット座標（愛知県近郊）です。
+// 実在する白神山地（青森・秋田県境 40.5N, 140.1E）の実測測量データではありません。
 export const DEMO_MOUNTAINS: MountainArea[] = [
+  {
+    id: "shirakami-03",
+    name: "白神山地",
+    areaName: "第3工区（北沢・東尾根）",
+    description:
+      "急傾斜地すべり危険箇所指定区域。主作業道および集材架線が稼働中。",
+    minLatitude: 34.985,
+    maxLatitude: 35.022,
+    minLongitude: 136.982,
+    maxLongitude: 137.032,
+    centerLatitude: 35.0005,
+    centerLongitude: 137.0045,
+  },
   {
     id: "gozaisyo-01",
     name: "御在所岳",
@@ -26,19 +43,14 @@ export const DEMO_MOUNTAINS: MountainArea[] = [
     centerLongitude: 136.435,
   },
   {
-    id: "shirakami-03",
-    name: "白神山地",
-    areaName: "第3工区（北沢・東尾根）",
-    description:
-      "急傾斜地すべり危険箇所指定区域。主作業道および集材架線が稼働中。",
-    centerLatitude: 35.0005,
-    centerLongitude: 137.0045,
-  },
-  {
     id: "kiso-01",
     name: "木曽国有林",
     areaName: "第1保安工区",
     description: "ヒノキ人工林間伐現場。沢筋の土壌水分監視を重点実施中。",
+    minLatitude: 35.84,
+    maxLatitude: 35.87,
+    minLongitude: 137.6,
+    maxLongitude: 137.65,
     centerLatitude: 35.8512,
     centerLongitude: 137.6241,
   },

@@ -7,6 +7,7 @@
 
 import argparse
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -89,13 +90,16 @@ def get_backend_python() -> Path | None:
     return venv_python if venv_python.exists() else None
 
 
-def build_backend_env() -> dict[str, str]:
+def build_backend_env(test_api_token: str | None = None) -> dict[str, str]:
     env = os.environ.copy()
     DEFAULT_DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     env.setdefault(
         "DATABASE_URL",
         f"sqlite+pysqlite:///{DEFAULT_DATABASE_PATH.resolve().as_posix()}",
     )
+    if test_api_token:
+        env["APP_ENVIRONMENT"] = "test"
+        env["SANMOU_TEST_API_TOKEN"] = test_api_token
     current_pythonpath = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = (
         f"{BACKEND_DIR}{os.pathsep}{current_pythonpath}"
@@ -127,9 +131,12 @@ def main() -> None:
 
     backend_process: subprocess.Popen[bytes] | None = None
     backend_python = get_backend_python()
+    test_api_token: str | None = (
+        secrets.token_urlsafe(32) if backend_python is not None else None
+    )
     if backend_python is not None:
         print("\n[バックエンド] DBマイグレーションとFastAPIサーバーを起動しています...")
-        backend_env = build_backend_env()
+        backend_env = build_backend_env(test_api_token)
         subprocess.run(
             [
                 str(backend_python),
@@ -160,12 +167,21 @@ def main() -> None:
         )
 
     print(f"\n[2/3] Webサーバーを起動しています（待受: {frontend_host}）...")
+    frontend_env = os.environ.copy()
+    if test_api_token is not None:
+        frontend_env.update(
+            {
+                "BACKEND_INTERNAL_URL": f"http://{BACKEND_HOST}:{BACKEND_PORT}",
+                "SANMOU_APP_ENV": "test",
+                "SANMOU_TEST_API_TOKEN": test_api_token,
+            }
+        )
     # Next.js 開発サーバーを起動（単独PC安全モードが既定、--allow-lan指定時のみLAN公開）
     process = subprocess.Popen(
         [npm_bin, "run", "dev", "--", "--hostname", frontend_host],
         cwd=FRONTEND_DIR,
+        env=frontend_env,
     )
-
     url = "http://localhost:3000/map"
     print(f"\n[3/3] ブラウザを自動で開きます: {url}")
     print("\n※ 終了するときは、この画面で [Ctrl + C] を押してください。\n")
