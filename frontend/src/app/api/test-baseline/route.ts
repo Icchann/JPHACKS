@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { NextResponse } from "next/server";
 
+import { validateMutationRequest } from "../../../lib/test-api-proxy";
 export const dynamic = "force-dynamic";
 
 const HTTP_BAD_REQUEST = 400;
@@ -131,6 +132,15 @@ export function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // 同一LAN内の第三者による無認証の基準改変やCSRF攻撃を遮断する（Issue #41）
+  const mutationGuardResponse = validateMutationRequest(
+    request.method,
+    request,
+  );
+  if (mutationGuardResponse) {
+    return mutationGuardResponse;
+  }
+
   let parsedBody: unknown;
   try {
     parsedBody = await request.json();
@@ -190,11 +200,11 @@ export async function POST(request: Request) {
       );
     }
 
+    // 基準姿勢確定日時は、観測ログ（ISO 8601 UTC）との照合が可能な完全タイムスタンプとして保存する（Issue #45）
     const setAt =
       typeof parsedBody.setAt === "string" && parsedBody.setAt.trim().length > 0
         ? parsedBody.setAt.trim()
-        : new Date().toLocaleTimeString("ja-JP");
-
+        : new Date().toISOString();
     state.baselines[normalizedNodeId] = {
       ax: parsedBody.ax,
       ay: parsedBody.ay,
@@ -267,6 +277,15 @@ export async function POST(request: Request) {
 }
 
 export function DELETE(request: Request) {
+  // 同一LAN内の第三者による無認証の基準全消去・警報強制解除を遮断する（Issue #41）
+  const mutationGuardResponse = validateMutationRequest(
+    request.method,
+    request,
+  );
+  if (mutationGuardResponse) {
+    return mutationGuardResponse;
+  }
+
   const url = new URL(request.url);
   const nodeId = url.searchParams.get("node_id")?.trim() || null;
   const state = readPersistedState();
