@@ -58,7 +58,21 @@ declare global {
 
 const DEFAULT_VENUE_LAT = "35.154210";
 const DEFAULT_VENUE_LON = "136.966420";
-const PENDING_STORAGE_KEY = "sanmou_pending_registrations";
+const PENDING_STORAGE_KEY_BASE = "sanmou_pending_registrations";
+const OPERATOR_TOKEN_STORAGE_KEY = "sanmou_operator_token";
+
+// 環境別（demo / test）に未同期キューのストレージキーを完全に分離する（Issue #49）
+function getPendingStorageKey(dataMode?: "demo" | "test"): string {
+  return `${PENDING_STORAGE_KEY_BASE}_${dataMode === "test" ? "test" : "demo"}`;
+}
+
+export type RegistrationSendResult =
+  | "created"
+  | "updated"
+  | "unauthorized"
+  | "validation_error"
+  | "conflict"
+  | "offline";
 const DEMO_FALLBACK_SAMPLE_MS = 1000;
 const DEMO_T1_AX_MG = -128;
 const DEMO_OTHER_AX_MG = -112;
@@ -371,16 +385,18 @@ export function MobileHome({
   const [isScanningNfc, setIsScanningNfc] = useState(false);
   const [nfcUrlCopied, setNfcUrlCopied] = useState(false);
   // SSR 時とクライアント localStorage の差分による DOM Mismatch を防ぐため、初期値は空配列としマウント後に読み込む
+  const storageKey = useMemo(() => getPendingStorageKey(dataMode), [dataMode]);
   const [pendingRegistrations, setPendingRegistrations] = useState<
     PendingRegistration[]
   >([]);
+  const [operatorToken, setOperatorToken] = useState<string>("");
 
   useEffect(() => {
-    // クライアントマウント後に現在時刻と保存済みキューを非同期にロードし、Hydration Mismatch を防ぐ
+    // クライアントマウント後に現在時刻と保存済みキューを非同期にロードし、Hydration Mismatch を防ぐ（Issue #49）
     const timerId = window.setTimeout(() => {
       setCapturedTime((prev) => prev || new Date().toLocaleString("ja-JP"));
       try {
-        const raw = window.localStorage.getItem(PENDING_STORAGE_KEY);
+        const raw = window.localStorage.getItem(storageKey);
         if (raw) {
           const parsed = JSON.parse(raw) as PendingRegistration[];
           if (Array.isArray(parsed)) {
@@ -390,9 +406,30 @@ export function MobileHome({
       } catch {
         // localStorage 読取失敗時は空キューを維持
       }
+
+      // URLクエリまたはローカルストレージから現場操作トークンを初期化（Issue #50）
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryToken =
+          urlParams.get("token")?.trim() ||
+          urlParams.get("operator_token")?.trim();
+        if (queryToken) {
+          setOperatorToken(queryToken);
+          window.localStorage.setItem(OPERATOR_TOKEN_STORAGE_KEY, queryToken);
+        } else {
+          const storedToken =
+            window.localStorage.getItem(OPERATOR_TOKEN_STORAGE_KEY)?.trim() ||
+            "";
+          if (storedToken) {
+            setOperatorToken(storedToken);
+          }
+        }
+      } catch {
+        // ストレージ読取不可時は空文字を維持
+      }
     }, 0);
     return () => window.clearTimeout(timerId);
-  }, []);
+  }, [storageKey]);
   const [isSyncingPending, setIsSyncingPending] = useState(false);
 
   // 警報トリガー（傾き検知または手動テスト）
@@ -693,31 +730,53 @@ export function MobileHome({
     );
   };
 
-  // 単一レコードをバックエンド台帳へ送信（POST → 409時はPATCH上書き）
+  // 単一レコードをバックエンド台帳へ送信（POST → 409時はPATCH上書き、状態を厳格分類: Issue #50）
   const sendRegistrationToBackend = async (item: {
     sensor_code: string;
     name: string;
     latitude: number;
     longitude: number;
-  }): Promise<"created" | "updated" | "failed"> => {
+  }): Promise<RegistrationSendResult> => {
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (operatorToken) {
+        headers["X-Sanmou-Operator-Token"] = operatorToken;
+      }
       const response = await fetch("/api/test-sensors", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(item),
       });
 
-      if (response.ok) {
+      if (response.status === 201 || response.ok) {
         return "created";
       }
 
+      if (response.status === 401 || response.status === 403) {
+        return "unauthorized";
+      }
+
+      if (response.status === 422 || response.status === 400) {
+        return "validation_error";
+      }
+
       if (response.status === HTTP_CONFLICT) {
+        const queryParams = new URLSearchParams({
+          q: item.sensor_code,
+          limit: String(SENSOR_LIST_LIMIT),
+        });
         const listRes = await fetch(
-          `/api/test-sensors?limit=${SENSOR_LIST_LIMIT}`,
+          `/api/test-sensors?${queryParams.toString()}`,
           {
             cache: "no-store",
+            headers,
           },
         );
+        if (listRes.status === 401 || listRes.status === 403) {
+          return "unauthorized";
+        }
         if (listRes.ok) {
           const listData = (await listRes.json()) as {
             items?: Array<{ id: string; sensor_code: string }>;
@@ -732,7 +791,7 @@ export function MobileHome({
               `/api/test-sensors/${encodeURIComponent(existing.id)}`,
               {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({
                   name: item.name,
                   latitude: item.latitude,
@@ -743,16 +802,22 @@ export function MobileHome({
             if (patchRes.ok) {
               return "updated";
             }
+            if (patchRes.status === 401 || patchRes.status === 403) {
+              return "unauthorized";
+            }
+            if (patchRes.status === 422 || patchRes.status === 400) {
+              return "validation_error";
+            }
           }
         }
       }
-      return "failed";
+      return "offline";
     } catch {
-      return "failed";
+      return "offline";
     }
   };
 
-  // localStorage への永続化を先に試行し、例外発生時はメモリ状態も成功表示も更新しない（Issue #30）
+  // localStorage への永続化を先に試行し、例外発生時はメモリ状態も成功表示も更新しない（Issue #30, #49）
   const persistPendingQueue = (nextQueue: PendingRegistration[]): boolean => {
     try {
       const serialized = JSON.stringify(nextQueue);
@@ -763,12 +828,12 @@ export function MobileHome({
       ) {
         Storage.prototype.setItem.call(
           window.localStorage,
-          PENDING_STORAGE_KEY,
+          storageKey,
           serialized,
         );
       }
-      window.localStorage.setItem(PENDING_STORAGE_KEY, serialized);
-      const verified = window.localStorage.getItem(PENDING_STORAGE_KEY);
+      window.localStorage.setItem(storageKey, serialized);
+      const verified = window.localStorage.getItem(storageKey);
       if (verified !== serialized) {
         return false;
       }
@@ -845,6 +910,21 @@ export function MobileHome({
       );
       return;
     }
+    if (result === "unauthorized") {
+      setRegSuccessMessage(null);
+      setRegNoticeMessage(
+        "🔒 現場操作パスコードが無効または未設定のためPC台帳に登録できません。下の「現場操作パスコード設定」を入力するか、PC管理者にパスコード（トークン）を確認してください。",
+      );
+      return;
+    }
+
+    if (result === "validation_error") {
+      setRegSuccessMessage(null);
+      setRegNoticeMessage(
+        "⚠️ 登録データの形式が不正です。機体IDや座標の入力値を確認してください。",
+      );
+      return;
+    }
 
     // 圏外・オフライン時は端末内キューに保存（同一機体IDは最新情報で上書きし重複登録を防止）
     const entry: PendingRegistration = {
@@ -870,7 +950,7 @@ export function MobileHome({
       return;
     }
     setRegSuccessMessage(
-      `✓ 機体 ${cleanNodeId} のNFC/GPS登録データをスマホ内に保存しました（未同期: ${nextQueue.length}件・帰社後ワンタップ同期対応）`,
+      `✓ 機体 ${cleanNodeId} の登録データをスマホ内に保存しました（通信圏外・PC接続後にワンタップ同期対応: 未同期 ${nextQueue.length}件）`,
     );
   };
   // 圏外で保存した未同期データのPC台帳への一括同期
@@ -878,11 +958,15 @@ export function MobileHome({
     if (pendingRegistrations.length === 0) return;
     setIsSyncingPending(true);
     const unsynced: PendingRegistration[] = [];
+    const successfullySyncedCodes = new Set<string>();
     let syncedCount = 0;
+    let unauthorizedCount = 0;
+    let validationErrorCount = 0;
 
     for (const item of pendingRegistrations) {
       if (dataMode === "demo") {
         syncedCount += 1;
+        successfullySyncedCodes.add(item.sensor_code.toUpperCase());
         continue;
       }
       const res = await sendRegistrationToBackend({
@@ -893,14 +977,46 @@ export function MobileHome({
       });
       if (res === "created" || res === "updated") {
         syncedCount += 1;
+        successfullySyncedCodes.add(item.sensor_code.toUpperCase());
       } else {
+        if (res === "unauthorized") {
+          unauthorizedCount += 1;
+        } else if (res === "validation_error") {
+          validationErrorCount += 1;
+        }
         unsynced.push(item);
       }
     }
 
-    persistPendingQueue(unsynced);
+    // 同期中に現場で新たに追加された機体の記録を失わないよう、最新のlocalStorageから成功分のみを除去する（Issue #49）
+    let remainingQueue = unsynced;
+    try {
+      const rawLatest = window.localStorage.getItem(storageKey);
+      if (rawLatest) {
+        const latestQueue = JSON.parse(rawLatest) as PendingRegistration[];
+        if (Array.isArray(latestQueue)) {
+          remainingQueue = latestQueue.filter(
+            (queueItem) =>
+              !successfullySyncedCodes.has(queueItem.sensor_code.toUpperCase()),
+          );
+        }
+      }
+    } catch {
+      // 読取失敗時はメモリ上の unsynced をフォールバック利用
+    }
+
+    persistPendingQueue(remainingQueue);
     setIsSyncingPending(false);
-    if (syncedCount > 0) {
+
+    if (unauthorizedCount > 0) {
+      setRegNoticeMessage(
+        "🔒 現場操作パスコードが無効または未設定のため、一部または全部のデータを同期できませんでした。パスコードを確認して入力してください。",
+      );
+    } else if (validationErrorCount > 0) {
+      setRegNoticeMessage(
+        "⚠️ 一部データの内容が不正なため同期できませんでした。登録内容を確認してください。",
+      );
+    } else if (syncedCount > 0) {
       setRegSuccessMessage(
         `✓ 未同期の設置登録データ ${syncedCount}件 をPC台帳へ同期完了しました！`,
       );
@@ -1342,6 +1458,52 @@ export function MobileHome({
                   >
                     📲 NFCタグへURLを書込
                   </button>
+                </div>
+              </div>
+            </details>
+
+            {/* 現場操作パスコード設定（LAN共有保護用: Issue #50） */}
+            <details className={styles.devToolsDetails}>
+              <summary className={styles.devToolsSummary}>
+                🔒 現場操作パスコード設定（PC接続・認証用）
+              </summary>
+              <div className={styles.operatorTokenBox}>
+                <label
+                  className={styles.fieldLabel}
+                  htmlFor="mobile-operator-token"
+                >
+                  操作パスコード（SANMOU_OPERATOR_TOKEN）:
+                </label>
+                <div className={styles.tokenInputRow}>
+                  <input
+                    id="mobile-operator-token"
+                    type="password"
+                    aria-label="現場操作パスコード"
+                    className={styles.tokenInput}
+                    value={operatorToken}
+                    onChange={(changeEvent) => {
+                      const val = changeEvent.target.value.trim();
+                      setOperatorToken(val);
+                      try {
+                        if (val) {
+                          window.localStorage.setItem(
+                            OPERATOR_TOKEN_STORAGE_KEY,
+                            val,
+                          );
+                        } else {
+                          window.localStorage.removeItem(
+                            OPERATOR_TOKEN_STORAGE_KEY,
+                          );
+                        }
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    placeholder="パスコードを入力（PC画面で確認）"
+                  />
+                  {operatorToken && (
+                    <span className={styles.tokenActiveBadge}>✓ 設定中</span>
+                  )}
                 </div>
               </div>
             </details>

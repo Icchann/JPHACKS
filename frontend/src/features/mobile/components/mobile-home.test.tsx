@@ -232,4 +232,100 @@ describe("MobileHome", () => {
       screen.getByText("未測位（参考プリセット座標）"),
     ).toBeInTheDocument();
   });
+
+  it("test環境とdemo環境で未同期キューが分離され、demoの同期でtestのキューが消去されない (Issue #49)", async () => {
+    // test環境の未同期キューにT1を事前保存
+    window.localStorage.setItem(
+      "sanmou_pending_registrations_test",
+      JSON.stringify([
+        {
+          sensor_code: "T1",
+          name: "樹木ノード T1",
+          latitude: 35.1,
+          longitude: 137.0,
+          capturedAt: "2026/10/27 10:00:00",
+          sourceMethod: "gps",
+        },
+      ]),
+    );
+
+    // demoモードで画面を表示
+    render(
+      <MobileHome dataMode="demo" initialNodeId="T2" initialTab="register" />,
+    );
+
+    // demo環境のキューは空であること（testのT1がdemoに混入しない）
+    expect(screen.queryByText(/未同期: 1件/)).not.toBeInTheDocument();
+
+    // test環境のキューが消去されず維持されていること
+    const testRaw = window.localStorage.getItem(
+      "sanmou_pending_registrations_test",
+    );
+    expect(testRaw).toContain("T1");
+  });
+
+  it("APIが401 Unauthorizedを返した際に圏外保存と誤魔化さず、パスコード警告を表示する (Issue #50)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    render(
+      <MobileHome dataMode="test" initialNodeId="T1" initialTab="register" />,
+    );
+
+    const submitBtn = screen.getByRole("button", {
+      name: "この位置・時刻で機体を固定登録",
+    });
+    fireEvent.click(submitBtn);
+
+    // 401時は「現場操作パスコードが無効または未設定」の警告が出ること
+    expect(
+      await screen.findByText(
+        /現場操作パスコードが無効または未設定のためPC台帳に登録できません/,
+      ),
+    ).toBeInTheDocument();
+
+    // 圏外保存（スマホ内に保存しました）と誤認表示されないこと
+    expect(
+      screen.queryByText(/スマホ内に保存しました/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("パスコード設定時は X-Sanmou-Operator-Token ヘッダーを付けて送信する (Issue #50)", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "sensor-1", sensor_code: "T1" }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    // 事前にパスコードを設定
+    window.localStorage.setItem("sanmou_operator_token", "my-secret-pin");
+
+    render(
+      <MobileHome dataMode="test" initialNodeId="T1" initialTab="register" />,
+    );
+
+    // パスコード設定中のバッジが出ていること
+    expect(await screen.findByText("✓ 設定中")).toBeInTheDocument();
+    const submitBtn = screen.getByRole("button", {
+      name: "この位置・時刻で機体を固定登録",
+    });
+    fireEvent.click(submitBtn);
+
+    await screen.findByText(/PC台帳に登録しました/);
+
+    // fetch 呼び出しに X-Sanmou-Operator-Token が含まれていること
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/test-sensors",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-Sanmou-Operator-Token": "my-secret-pin",
+        }),
+      }),
+    );
+  });
 });
