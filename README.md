@@ -122,8 +122,9 @@ Python側でS0形式のパケットを解析し、起動ログや破損行と区
 
 徒歩巡回は現地の細かな確認に、ドローンや衛星は上空・広域からの把握に強みがあります。山網は、それらを置き換えるのではなく、**管理者が指定した地点の変化を巡回の間も記録し、手元で確認する役割**を担います。
 
-クラウド接続は遠隔共有に有用ですが、山網は現地PCでのローカル運用を中核にしています。森林向けLoRaネットワークにも [Dryad Silvanetなどの先行事例](https://www.dryad.net/meshgateway) があり、LoRa自体の新規性ではなく、少人数での巡回判断と設置・保守を含めた使いやすさを検証します。低コスト化も目標であり、導入・維持費の優位性は今後の比較対象です。
+クラウド接続は遠隔共有に有用ですが、山網は現地PCでのローカル運用を中核にしています。森林向けLoRaネットワークにも [Dryad Silvanetなどの先行事例](https://www.dryad.net/meshgateway) があり、LoRa自体の新規性ではなく、少人数での巡回判断と設置・保守を含めた使いやすさを検証します。
 
+低コスト化も重要な目標であり、試作1ノードあたりの部品原価は約¥6,150（XIAO ESP32C3、ADXL367、E220モジュール等）。中核処理の完全ローカルPC完結により**月額クラウド利用料・セルラーSIM通信料は0円**です。先行ソリューション（Dryad、SpreadRouter等）や代替手段との定量的コスト比較は [コスト構造と先行事例比較](https://github.com/jphacks/ng_2618/blob/main/docs/COST_ANALYSIS.md) に整理しています。
 ## 今後の展望
 
 まず、森林管理の担当者へのヒアリングと小規模な設置試験を通じて、観測情報によって確認候補を選びやすくなるかを確かめます。判断にかかる時間だけでなく、設置・交換・誤警告への対応も記録し、追加された負担に見合うかを評価します。
@@ -191,6 +192,6 @@ python scripts/run_test_environment.py --port COM3 --allow-lan
 
 ## 関連資料
 
-[利用場面](https://github.com/jphacks/ng_2618/blob/main/docs/USE_CASES.md) ／ [システム構成](https://github.com/jphacks/ng_2618/blob/main/docs/ARCHITECTURE.md) ／ [検証・評価計画](https://github.com/jphacks/ng_2618/blob/main/docs/VALIDATION.md) ／ [今後の課題](https://github.com/jphacks/ng_2618/blob/main/FUTURE_WORK.md)
+[利用場面](https://github.com/jphacks/ng_2618/blob/main/docs/USE_CASES.md) ／ [システム構成](https://github.com/jphacks/ng_2618/blob/main/docs/ARCHITECTURE.md) ／ [コスト構造と先行事例比較](https://github.com/jphacks/ng_2618/blob/main/docs/COST_ANALYSIS.md) ／ [検証・評価計画](https://github.com/jphacks/ng_2618/blob/main/docs/VALIDATION.md) ／ [実証実験プロトコル](https://github.com/jphacks/ng_2618/blob/main/docs/FIELD_TRIAL_PROTOCOL.md) ／ [今後の課題](https://github.com/jphacks/ng_2618/blob/main/FUTURE_WORK.md)
 
 > 山網は開発中の試作システムです。観測値・警告は現地確認の参考情報であり、倒木・土砂災害の予測や安全を保証するものではありません。

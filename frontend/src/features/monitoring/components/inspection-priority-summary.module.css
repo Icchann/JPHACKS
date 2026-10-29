@@ -1,0 +1,177 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--surface-primary, #1e293b);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 8px;
+  padding: 16px;
+  color: var(--text-primary, #f8fafc);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color, #334155);
+  padding-bottom: 12px;
+}
+
+.titleArea h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.titleArea p {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #94a3b8);
+  margin: 4px 0 0 0;
+}
+
+.candidateList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.candidateCard {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface-secondary, #0f172a);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.candidateCard:hover {
+  border-color: var(--accent-color, #38bdf8);
+  background: rgba(56, 189, 248, 0.05);
+}
+
+.candidateMain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.candidateTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sensorCode {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.sensorName {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.candidateReason {
+  font-size: 0.8rem;
+  color: var(--text-muted, #cbd5e1);
+}
+
+.priorityBadgeUrgent {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.priorityBadgeRecommended {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid #f59e0b;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.priorityBadgeRoutine {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 1px solid #22c55e;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.priorityBadgeUnverified {
+  background: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+  border: 1px solid #94a3b8;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* 巡回効率・判断工数シミュレーション比較 */
+.efficiencySection {
+  background: var(--surface-secondary, #0f172a);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.efficiencyTitle {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary, #f8fafc);
+  margin-bottom: 8px;
+}
+
+.efficiencyGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.efficiencyCard {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.efficiencyLabel {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #94a3b8);
+  margin-bottom: 4px;
+}
+
+.efficiencyValue {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.efficiencySubtext {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.disclaimerText {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #94a3b8);
+  margin-top: 8px;
+  line-height: 1.4;
+}

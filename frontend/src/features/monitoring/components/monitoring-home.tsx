@@ -39,6 +39,7 @@ import type {
 } from "../../sensor-management/sensor-api-types";
 import { useDemoMonitoring } from "../use-demo-monitoring";
 import { Icon } from "./icon";
+import { InspectionPrioritySummary } from "./inspection-priority-summary";
 import { LayerController } from "./layer-controller";
 import styles from "./monitoring-home.module.css";
 import { OfflineMountainMap } from "./offline-mountain-map";
@@ -559,6 +560,7 @@ export function MonitoringHome({
   const [selectedModalSensor, setSelectedModalSensor] =
     useState<DemoSensor | null>(null);
   const [isWarningPanelOpen, setIsWarningPanelOpen] = useState(true);
+  const [isInspectionSummaryOpen, setIsInspectionSummaryOpen] = useState(false);
   const [mapViewEngine] = useState<"offline_svg" | "satellite_google">(
     initialMapEngine,
   );
@@ -1179,6 +1181,15 @@ export function MonitoringHome({
               <Icon name="alert" />
               <span>警告一覧 ({activeAlerts.length})</span>
             </button>
+            <button
+              data-sanmou-button="secondary"
+              aria-label="巡回判断支援サマリーを開く"
+              className={styles.warningToggleBtn}
+              onClick={() => setIsInspectionSummaryOpen(true)}
+              type="button"
+            >
+              <span>🌲 巡回判断支援</span>
+            </button>
           </div>
         </div>
 
@@ -1358,6 +1369,50 @@ export function MonitoringHome({
         onResetBaseline={resetNodeBaseline}
         sensor={currentModalSensor}
       />
+      {isInspectionSummaryOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="巡回判断支援・確認候補地点サマリー"
+          className={styles.modalOverlay}
+          onClick={() => setIsInspectionSummaryOpen(false)}
+        >
+          <div
+            className={styles.modalCard}
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "600px", width: "90%" }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginBottom: "8px",
+              }}
+            >
+              <button
+                type="button"
+                data-sanmou-button="secondary"
+                onClick={() => setIsInspectionSummaryOpen(false)}
+                aria-label="閉じる"
+              >
+                ✕ 閉じる
+              </button>
+            </div>
+            <InspectionPrioritySummary
+              sensors={activeSensors}
+              currentTimeMs={
+                currentTimestampMs > 0
+                  ? currentTimestampMs
+                  : Date.parse(snapshot.refreshedAt)
+              }
+              onFocusSensor={(id) => {
+                focusSensor(id);
+                setIsInspectionSummaryOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {dataMode !== "test" && newAlerts.length > 0 ? (
         <div className={styles.toast} role="status">

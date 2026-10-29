@@ -17,7 +17,6 @@ type WarningPanelProps = {
   onFocusSensor: (sensorId: string) => void;
   onTriggerTestAlert?: () => void;
 };
-
 export function WarningPanel({
   alerts,
   refreshedAt,
