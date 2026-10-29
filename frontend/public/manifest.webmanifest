@@ -1,0 +1,19 @@
+{
+  "name": "山網 — 携帯圏外山林観測現場システム",
+  "short_name": "山網",
+  "description": "携帯圏外でも山の変化を次の現地確認につなぐ山林観測・巡回支援システム現場登録画面",
+  "start_url": "/mobile",
+  "scope": "/mobile",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#15803d",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -113,6 +113,9 @@ def read_observation_csv(
                             az_mg=observation.az_mg,
                             soil_raw=observation.soil_raw_measured,
                             battery_mv=observation.battery_mv_measured,
+                            installation_id=observation.installation_id,
+                            boot_id=observation.boot_id,
+                            config_version=observation.config_version,
                         )
                     )
 
@@ -173,6 +176,9 @@ def read_observation_csv(
                         az_mg=observation.az_mg,
                         soil_raw=observation.soil_raw_measured,
                         battery_mv=observation.battery_mv_measured,
+                        installation_id=observation.installation_id,
+                        boot_id=observation.boot_id,
+                        config_version=observation.config_version,
                     )
                 )
     except FileNotFoundError:

@@ -25,6 +25,45 @@
 | GET         | `/test/observations` | test環境のCSV観測取得                                               |
 | DELETE      | `/test/observations` | test環境のCSV履歴クリア。データを失う操作で、試験でも無断実行しない |
 
+
+### 設置確定・BLE基準同期API（Issue #59）
+
+| Method | パス | 説明 |
+| --- | --- | --- |
+| POST | `/api/v1/installations/confirm` | 設置情報（座標・精度・日時）とBLE基準取得結果を単一トランザクションで確定登録（冪等処理） |
+| GET | `/api/v1/installations/status/{request_id}` | `request_id` に紐づく設置確定・同期状態の冪等照会 |
+| GET | `/api/v1/installations/nodes/{node_id}/active` | 対象機体の現在有効な最新設置および基準（capture）の取得 |
+| GET | `/api/v1/alerts/active` | 現在発火中の機体別傾き変化警告一覧（PC常駐判定エンジンによる最新ラッチ状態） |
+| POST | `/api/v1/alerts/{node_id}/acknowledge` | 対象機体の発火中警告の確認・消音操作 |
+| POST | `/api/v1/alerts/{node_id}/clear` | 対象機体の発火中警告の手動解除（基準姿勢は維持） |
+
+#### 設置確定リクエスト例 (`POST /api/v1/installations/confirm`)
+
+```json
+{
+  "request_id": "c1f7b92a-89a1-43e7-a9a2-97b7b1234567",
+  "node_id": "T1",
+  "installation_id": "inst_T1_20261029_090000",
+  "installed_at": "2026-10-29T09:00:00Z",
+  "latitude": 35.1234567,
+  "longitude": 137.9876543,
+  "position_accuracy_m": 3.2,
+  "identity_method": "web_nfc",
+  "position_method": "gps",
+  "capture": {
+    "capture_id": "cap_8f7b2c1a-4567-4890-a1b2-c3d4e5f60789",
+    "baseline_ax_mg": -120,
+    "baseline_ay_mg": -95,
+    "baseline_az_mg": 985,
+    "variance_mg2": 45,
+    "sample_count": 20,
+    "duration_ms": 2000,
+    "quality": "good",
+    "config_version": 1
+  },
+  "expected_version": 1
+}
+```
 台帳等には試験用 `X-Test-Token` を使う。詳細な環境条件・返却値はルート実装で確認する。
 
 ### 台帳作成の例（座標は架空）

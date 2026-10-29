@@ -26,6 +26,10 @@ export type DemoSensor = {
   elevationMeters?: number;
   locationNote?: string;
   mountainId?: string;
+  installationId?: string | null;
+  baselineQuality?: "good" | "acceptable" | "rejected" | null;
+  monitoringState?:
+    "monitoring" | "waiting_observation" | "unregistered_observation" | "stale";
 };
 
 export type AlertSeverity = "caution" | "danger" | "status";

@@ -348,6 +348,24 @@ export function SensorDetail({
                         : String(sensor.batteryPercent) + "%"}
                     </dd>
                   </div>
+                  {sensor.installationId ? (
+                    <div>
+                      <dt>物理設置ID</dt>
+                      <dd>{sensor.installationId}</dd>
+                    </div>
+                  ) : null}
+                  {sensor.baselineQuality ? (
+                    <div>
+                      <dt>基準取得品質</dt>
+                      <dd>
+                        {sensor.baselineQuality === "good"
+                          ? "優良 (安定静止)"
+                          : sensor.baselineQuality === "acceptable"
+                            ? "許容範囲"
+                            : "要再取得"}
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
               </article>
 

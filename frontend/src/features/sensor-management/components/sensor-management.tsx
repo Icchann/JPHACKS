@@ -789,6 +789,12 @@ export function SensorManagement({
                           )}
                         </dd>
                       </div>
+                      {sensor.installationId ? (
+                        <div>
+                          <dt>設置ID</dt>
+                          <dd>{sensor.installationId}</dd>
+                        </div>
+                      ) : null}
                     </dl>
 
                     <footer className={styles.cardActions}>

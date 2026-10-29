@@ -18,6 +18,9 @@ class TestObservation(BaseModel):
     az_mg: int
     soil_raw: int | None
     battery_mv: int | None
+    installation_id: str | None = None
+    boot_id: str | None = None
+    config_version: int = 1
 
 
 class TestObservationListResponse(BaseModel):

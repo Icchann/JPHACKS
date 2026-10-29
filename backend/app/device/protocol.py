@@ -2,9 +2,15 @@ import math
 import re
 from dataclasses import dataclass
 
-PACKET_TYPE = "S0"
-FIELD_COUNT = 10
+PACKET_TYPE_S0 = "S0"
+PACKET_TYPE_S1 = "S1"
+PACKET_TYPE = PACKET_TYPE_S0  # 下位互換性用エイリアス
+FIELD_COUNT_S0 = 10
+FIELD_COUNT_S1 = 13
+FIELD_COUNT = FIELD_COUNT_S0  # 下位互換性用エイリアス
 NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+INSTALLATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+BOOT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
 
 class InvalidSerialRecord(ValueError):
@@ -24,6 +30,9 @@ class SerialObservation:
     soil_raw: int
     battery_mv: int
     raw_line: str
+    installation_id: str | None = None
+    boot_id: str | None = None
+    config_version: int = 1
 
     @property
     def soil_raw_measured(self) -> int | None:
@@ -68,56 +77,102 @@ def _parse_integer(value: str, field_name: str) -> int:
 
 
 def parse_serial_line(line: bytes | str) -> SerialObservation | None:
-    """S0レコードを解析し、それ以外の起動メッセージなどは無視する。"""
+    """S0またはS1レコードを解析し、それ以外の起動メッセージなどは無視する (Issue #56)。"""
 
     if isinstance(line, bytes):
-        if not line.startswith(b"S0,"):
+        if not (line.startswith(b"S0,") or line.startswith(b"S1,")):
             return None
         try:
             decoded = line.decode("ascii")
         except UnicodeDecodeError as exc:
-            raise InvalidSerialRecord("S0レコードはASCIIである必要があります") from exc
+            raise InvalidSerialRecord("シリアルレコードはASCIIである必要があります") from exc
     else:
-        if not line.startswith("S0,"):
+        if not (line.startswith("S0,") or line.startswith("S1,")):
             return None
         decoded = line
 
     raw_line = decoded.rstrip("\r\n")
     fields = raw_line.split(",")
-    if len(fields) != FIELD_COUNT:
-        raise InvalidSerialRecord("S0レコードは10フィールドである必要があります")
+    packet_type = fields[0] if fields else ""
 
-    (
-        packet_type,
-        node_id,
-        seq,
-        hop,
-        sample_ms,
-        ax_mg,
-        ay_mg,
-        az_mg,
-        soil_raw,
-        battery_mv,
-    ) = fields
+    if packet_type == PACKET_TYPE_S0:
+        if len(fields) != FIELD_COUNT_S0:
+            raise InvalidSerialRecord("S0レコードは10フィールドである必要があります")
+        (
+            _,
+            node_id,
+            seq,
+            hop,
+            sample_ms,
+            ax_mg,
+            ay_mg,
+            az_mg,
+            soil_raw,
+            battery_mv,
+        ) = fields
+        if not NODE_ID_PATTERN.fullmatch(node_id):
+            raise InvalidSerialRecord("node_idの形式が不正です")
 
-    if packet_type != PACKET_TYPE:
-        return None
-    if not NODE_ID_PATTERN.fullmatch(node_id):
-        raise InvalidSerialRecord("node_idの形式が不正です")
+        return SerialObservation(
+            packet_type=packet_type,
+            node_id=node_id,
+            seq=_parse_non_negative_integer(seq, "seq"),
+            hop=_parse_non_negative_integer(hop, "hop"),
+            sample_ms=_parse_non_negative_integer(sample_ms, "sample_ms"),
+            ax_mg=_parse_integer(ax_mg, "ax_mg"),
+            ay_mg=_parse_integer(ay_mg, "ay_mg"),
+            az_mg=_parse_integer(az_mg, "az_mg"),
+            soil_raw=_parse_integer(soil_raw, "soil_raw"),
+            battery_mv=_parse_integer(battery_mv, "battery_mv"),
+            raw_line=raw_line,
+            installation_id=None,
+            boot_id=None,
+            config_version=0,
+        )
 
-    return SerialObservation(
-        packet_type=packet_type,
-        node_id=node_id,
-        seq=_parse_non_negative_integer(seq, "seq"),
-        hop=_parse_non_negative_integer(hop, "hop"),
-        sample_ms=_parse_non_negative_integer(sample_ms, "sample_ms"),
-        ax_mg=_parse_integer(ax_mg, "ax_mg"),
-        ay_mg=_parse_integer(ay_mg, "ay_mg"),
-        az_mg=_parse_integer(az_mg, "az_mg"),
-        soil_raw=_parse_integer(soil_raw, "soil_raw"),
-        battery_mv=_parse_integer(battery_mv, "battery_mv"),
-        raw_line=raw_line,
-    )
+    if packet_type == PACKET_TYPE_S1:
+        if len(fields) != FIELD_COUNT_S1:
+            raise InvalidSerialRecord("S1レコードは13フィールドである必要があります")
+        (
+            _,
+            node_id,
+            installation_id,
+            boot_id,
+            sample_seq,
+            hop,
+            sample_ms,
+            ax_mg,
+            ay_mg,
+            az_mg,
+            soil_raw,
+            battery_mv,
+            config_version,
+        ) = fields
+        if not NODE_ID_PATTERN.fullmatch(node_id):
+            raise InvalidSerialRecord("node_idの形式が不正です")
+        if not INSTALLATION_ID_PATTERN.fullmatch(installation_id):
+            raise InvalidSerialRecord("installation_idの形式が不正です")
+        if not BOOT_ID_PATTERN.fullmatch(boot_id):
+            raise InvalidSerialRecord("boot_idの形式が不正です")
+
+        return SerialObservation(
+            packet_type=packet_type,
+            node_id=node_id,
+            seq=_parse_non_negative_integer(sample_seq, "sample_seq"),
+            hop=_parse_non_negative_integer(hop, "hop"),
+            sample_ms=_parse_non_negative_integer(sample_ms, "sample_ms"),
+            ax_mg=_parse_integer(ax_mg, "ax_mg"),
+            ay_mg=_parse_integer(ay_mg, "ay_mg"),
+            az_mg=_parse_integer(az_mg, "az_mg"),
+            soil_raw=_parse_integer(soil_raw, "soil_raw"),
+            battery_mv=_parse_integer(battery_mv, "battery_mv"),
+            raw_line=raw_line,
+            installation_id=installation_id,
+            boot_id=boot_id,
+            config_version=_parse_non_negative_integer(config_version, "config_version"),
+        )
+
+    return None
 
 
 def calculate_tilt_angle_deg(

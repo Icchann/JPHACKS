@@ -113,6 +113,9 @@ def test_returns_valid_rows_and_preserves_acceleration_minus_one(tmp_path: Path)
             "az_mg": 96,
             "soil_raw": None,
             "battery_mv": None,
+            "installation_id": None,
+            "boot_id": None,
+            "config_version": 0,
         }
     ]
 
