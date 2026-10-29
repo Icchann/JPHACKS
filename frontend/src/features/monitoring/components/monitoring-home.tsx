@@ -659,20 +659,15 @@ export function MonitoringHome({
   );
 
   const effectiveRefreshedAt = useMemo(() => {
-    if (dataMode === "test") {
-      if (!testObsError && testObservations?.refreshed_at) {
-        return testObservations.refreshed_at;
-      }
-      return new Date(currentTimestampMs).toISOString();
+    if (
+      dataMode === "test" &&
+      !testObsError &&
+      testObservations?.refreshed_at
+    ) {
+      return testObservations.refreshed_at;
     }
     return snapshot.refreshedAt;
-  }, [
-    currentTimestampMs,
-    dataMode,
-    snapshot.refreshedAt,
-    testObsError,
-    testObservations,
-  ]);
+  }, [dataMode, snapshot.refreshedAt, testObsError, testObservations]);
 
   const activeAlerts = useMemo<DemoAlert[]>(() => {
     if (dataMode !== "test") {
@@ -1236,7 +1231,7 @@ export function MonitoringHome({
           <div className={styles.headerActions}>
             <p className={styles.updatedAt}>
               <span>最終更新</span>
-              <time dateTime={effectiveRefreshedAt}>
+              <time dateTime={effectiveRefreshedAt} suppressHydrationWarning>
                 {formatJapanDateTime(effectiveRefreshedAt)}
               </time>
               <i aria-label="更新状態: 正常" />

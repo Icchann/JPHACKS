@@ -33,7 +33,7 @@ export function WarningPanel({
         <div>
           <p>ACTIVE ALERTS</p>
           <h2>警告</h2>
-          <time dateTime={refreshedAt}>
+          <time dateTime={refreshedAt} suppressHydrationWarning>
             更新 {formatJapanDateTime(refreshedAt)}
           </time>
         </div>
