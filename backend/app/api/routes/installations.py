@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_test_admin
 from app.db.session import get_db_session
 from app.models.installation import Capture, Installation, SyncRequestLog
-from app.models.sensor import Sensor
+from app.models.sensor import Sensor, SensorEvaluationState
 from app.schemas.installation import (
     InstallationConfirmRequest,
     InstallationConfirmResponse,
@@ -98,20 +98,28 @@ def confirm_installation(
     next_version = 1
     if active_installations:
         latest = active_installations[0]
-        # 期待バージョン検証
-        if req.expected_version < latest.version:
+        # 厳格なCAS (Compare-And-Swap) 世代検証 (Issue #72)
+        if req.expected_version != latest.version:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    f"既存の設置世代 ({latest.version}) より古い期待世代 "
-                    f"({req.expected_version}) のため競合しました"
+                    f"設置世代の競合を検知しました (現在世代: {latest.version}, "
+                    f"指定期待世代: {req.expected_version})"
                 ),
             )
         next_version = latest.version + 1
         # 旧設置をsupersededへ遷移させて履歴を保護
         for inst in active_installations:
             inst.status = "superseded"
-
+    else:
+        # 初回設置時は expected_version が 1 であることを検証 (飛び番拒否)
+        if req.expected_version != 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"初回設置の期待世代は1である必要があります (指定値: {req.expected_version})"
+                ),
+            )
     # 4. 新規 Installation レコードの作成
     new_inst = Installation(
         installation_id=req.installation_id,
@@ -146,7 +154,7 @@ def confirm_installation(
     )
     db.add(new_cap)
 
-    # 6. 台帳 (Sensor) が存在する場合は座標と設置メタデータを最新化
+    # 6. 台帳 (Sensor) の最新化、未登録時は自動作成 (Issue #72)
     sensor = db.scalar(select(Sensor).where(Sensor.sensor_code == req.node_id))
     if sensor:
         sensor.latitude = Decimal(str(req.latitude))
@@ -157,7 +165,31 @@ def confirm_installation(
         )
         sensor.identity_method = req.identity_method
         sensor.position_method = req.position_method
-
+    else:
+        sensor = Sensor(
+            sensor_code=req.node_id,
+            name=f"樹木ノード {req.node_id}",
+            latitude=Decimal(str(req.latitude)),
+            longitude=Decimal(str(req.longitude)),
+            installed_at=req.installed_at,
+            position_accuracy_m=(
+                Decimal(str(req.position_accuracy_m))
+                if req.position_accuracy_m is not None
+                else None
+            ),
+            identity_method=req.identity_method,
+            position_method=req.position_method,
+        )
+        db.add(sensor)
+        db.flush()
+        eval_state = SensorEvaluationState(
+            sensor_id=sensor.id,
+            observation_severity="unknown",
+            communication_status="unknown",
+            device_fault_status="unknown",
+            last_evaluated_at=req.installed_at,
+        )
+        db.add(eval_state)
     now_utc = datetime.now(UTC)
     response = InstallationConfirmResponse(
         status="confirmed",

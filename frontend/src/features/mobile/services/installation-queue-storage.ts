@@ -51,9 +51,10 @@ export async function savePendingInstallation(
     const { promise, resolve, reject } = Promise.withResolvers<void>();
     const tx = db.transaction(STORE_NAME, "readwrite");
     const store = tx.objectStore(STORE_NAME);
-    const putReq = store.put(record);
-    putReq.onsuccess = () => resolve();
-    putReq.onerror = () => reject(putReq.error);
+    store.put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
     await promise;
   }
 
@@ -122,12 +123,13 @@ export async function deletePendingInstallation(
 ): Promise<void> {
   const db = await openDb();
   if (db) {
-    const { promise, resolve } = Promise.withResolvers<void>();
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
     const tx = db.transaction(STORE_NAME, "readwrite");
     const store = tx.objectStore(STORE_NAME);
-    const delReq = store.delete(requestId);
-    delReq.onsuccess = () => resolve();
-    delReq.onerror = () => resolve();
+    store.delete(requestId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
     await promise;
   }
 
@@ -213,6 +215,15 @@ export async function syncPendingInstallationsToPc(
 
       if (response.ok) {
         const data = (await response.json()) as InstallationConfirmResponse;
+        // 応答の要求ID・機体IDが送信データと厳密に一致することを照合（Issue #71）
+        if (
+          data.request_id !== item.requestId ||
+          data.node_id !== item.nodeId
+        ) {
+          throw new Error(
+            `PC応答の要求ID (${data.request_id}) / 機体ID (${data.node_id}) が送信内容 (${item.requestId} / ${item.nodeId}) と一致しません`,
+          );
+        }
         await updateInstallationSyncStatus(item.requestId, "synced");
         summary.synced++;
         summary.results.push({

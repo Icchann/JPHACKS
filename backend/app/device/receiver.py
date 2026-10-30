@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.device.csv_store import ObservationCsvStore
-from app.device.protocol import InvalidSerialRecord, parse_serial_line
+from app.device.protocol import InvalidSerialRecord, SerialObservation, parse_serial_line
 from app.device.stream import SerialLineBuffer
 
 
@@ -21,10 +21,12 @@ class SerialObservationReceiver:
         store: ObservationCsvStore,
         now: Callable[[], datetime],
         line_buffer: SerialLineBuffer | None = None,
+        on_observation: Callable[[SerialObservation, datetime], None] | None = None,
     ) -> None:
         self._store = store
         self._now = now
         self._line_buffer = line_buffer or SerialLineBuffer()
+        self._on_observation = on_observation
         self.stats = ReceiverStats()
 
     def receive(self, chunk: bytes) -> ReceiverStats:
@@ -44,7 +46,14 @@ class SerialObservationReceiver:
                 self.stats.ignored_lines += 1
                 continue
 
-            self._store.append(observation, self._now())
+            received_at = self._now()
+            self._store.append(observation, received_at)
             self.stats.saved_records += 1
 
+            if self._on_observation is not None:
+                try:
+                    self._on_observation(observation, received_at)
+                except Exception:
+                    # 判定処理で例外が発生してもシリアル受信・CSV保存を中断させない
+                    pass
         return self.stats

@@ -7,10 +7,21 @@ import React, {
   useRef,
   useState,
 } from "react";
-
 import { useTestObservations } from "../../dashboard/use-test-observations";
+import type {
+  CaptureData,
+  PendingInstallationRecord,
+} from "../../sensor-management/installation-contract-types";
+import {
+  BleDeviceAdapter,
+  MockBluetoothAdapter,
+  WebBluetoothAdapter,
+} from "../services/ble-device-adapter";
+import {
+  savePendingInstallation,
+  syncPendingInstallationsToPc,
+} from "../services/installation-queue-storage";
 import styles from "./mobile-home.module.css";
-
 type MobileHomeProps = {
   dataMode?: "demo" | "test";
   initialNodeId?: string;
@@ -394,7 +405,11 @@ export function MobileHome({
     PendingRegistration[]
   >([]);
   const [operatorToken, setOperatorToken] = useState<string>("");
-
+  const [bleStatusMessage, setBleStatusMessage] = useState<string | null>(null);
+  const [isBleConnecting, setIsBleConnecting] = useState(false);
+  const [activeBleCapture, setActiveBleCapture] = useState<CaptureData | null>(
+    null,
+  );
   useEffect(() => {
     // クライアントマウント後に現在時刻と保存済みキューを非同期にロードし、Hydration Mismatch を防ぐ（Issue #49）
     const timerId = window.setTimeout(() => {
@@ -411,9 +426,15 @@ export function MobileHome({
         // localStorage 読取失敗時は空キューを維持
       }
 
-      // URLクエリまたはローカルストレージから現場操作トークンを初期化（Issue #50）
+      // URLクエリから機体ID・現場操作トークンを初期化（Issue #50, #73）
       try {
         const urlParams = new URLSearchParams(window.location.search);
+        const nodeFromUrl = urlParams.get("node")?.trim().toUpperCase();
+        if (nodeFromUrl) {
+          setSelectedNodeId(nodeFromUrl);
+          setRegNodeId(nodeFromUrl);
+          setRegName(getDefaultNodeName(nodeFromUrl));
+        }
         const queryToken =
           urlParams.get("token")?.trim() ||
           urlParams.get("operator_token")?.trim();
@@ -921,6 +942,55 @@ export function MobileHome({
     }
   };
 
+  // BLEによる静止基準姿勢の取得 (Issue #57, #71)
+  const handleBleCaptureBaseline = async () => {
+    const cleanNodeId = regNodeId.trim().toUpperCase() || "T1";
+    const adapter: BleDeviceAdapter =
+      dataMode === "demo"
+        ? new MockBluetoothAdapter()
+        : typeof navigator !== "undefined" && "bluetooth" in navigator
+          ? new WebBluetoothAdapter()
+          : new MockBluetoothAdapter();
+
+    if (!adapter.isSupported() && dataMode !== "demo") {
+      setBleStatusMessage(
+        "⚠️ お使いのブラウザはWeb Bluetooth APIに対応していません (Android Chromeをご利用ください)",
+      );
+      return;
+    }
+
+    try {
+      setIsBleConnecting(true);
+      setBleStatusMessage(`📲 機体「${cleanNodeId}」とBluetooth接続中...`);
+      await adapter.connectAndVerifyNode(cleanNodeId);
+
+      const requestId =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `req_${Date.now()}`;
+      const installationId = `inst_${cleanNodeId}_${Date.now()}`;
+
+      const capture = await adapter.executeInstallation(
+        requestId,
+        installationId,
+        (_state, msg) => {
+          setBleStatusMessage(`📲 [${cleanNodeId}] ${msg}`);
+        },
+      );
+
+      setActiveBleCapture(capture);
+      setBleStatusMessage(
+        `✓ [${cleanNodeId}] 静止基準姿勢を取得しました (Z: ${capture.baseline_az_mg}mg / 品質: ${capture.quality})`,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setBleStatusMessage(`⚠️ BLE基準取得失敗: ${msg}`);
+    } finally {
+      setIsBleConnecting(false);
+      await adapter.disconnect().catch(() => {});
+    }
+  };
+
   // 設置登録の送信（NFC識別・GPS・スマホ時計の統合登録）
   const handleRegisterSubmit = async (formEvent: React.FormEvent) => {
     formEvent.preventDefault();
@@ -1018,7 +1088,19 @@ export function MobileHome({
       return;
     }
 
-    // 圏外・オフライン時は端末内キューに保存（同一機体IDは最新情報で上書きし重複登録を防止）
+    // 圏外・オフライン時は端末内キュー（localStorage & IndexedDB: Issue #60, #71）に保存
+    const captureToSave: CaptureData = activeBleCapture ?? {
+      capture_id: `cap_${cleanNodeId}_${Date.now()}`,
+      baseline_ax_mg: 0,
+      baseline_ay_mg: 0,
+      baseline_az_mg: 1000,
+      variance_mg2: 10,
+      sample_count: 20,
+      duration_ms: 2000,
+      quality: "good",
+      config_version: 1,
+    };
+
     const entry: PendingRegistration = {
       sensor_code: cleanNodeId,
       name: cleanName,
@@ -1031,6 +1113,26 @@ export function MobileHome({
       identity_method: identityMethod,
       position_method: positionMethod,
     };
+
+    const pendingRecord: PendingInstallationRecord = {
+      requestId:
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `req_${Date.now()}`,
+      nodeId: cleanNodeId,
+      installationId: `inst_${cleanNodeId}_${Date.now()}`,
+      installedAt: installedAtIso,
+      latitude: latNum,
+      longitude: lonNum,
+      positionAccuracyM: gpsAccuracy,
+      identityMethod,
+      positionMethod,
+      capture: captureToSave,
+      syncStatus: "local_saved",
+      createdAt: new Date().toISOString(),
+    };
+    await savePendingInstallation(pendingRecord).catch(() => {});
+
     const nextQueue = [
       ...pendingRegistrations.filter(
         (item) => item.sensor_code.toUpperCase() !== cleanNodeId,
@@ -1085,6 +1187,14 @@ export function MobileHome({
         }
         unsynced.push(item);
       }
+    }
+
+    // IndexedDBの未同期キューもPCへ確定同期 (Issue #60, #71)
+    if (dataMode !== "demo") {
+      await syncPendingInstallationsToPc(
+        window.location.origin,
+        operatorToken,
+      ).catch(() => {});
     }
 
     // 同期中に現場で新たに追加された機体の記録を失わないよう、最新のlocalStorageから成功分のみを除去する（Issue #49）
@@ -1470,6 +1580,36 @@ export function MobileHome({
                 >
                   🏛️ 会場（名古屋）座標を即時セット
                 </button>
+              </div>
+
+              <div
+                className={styles.gpsActionBox}
+                style={{ marginTop: "12px" }}
+              >
+                <span className={styles.fieldLabel}>
+                  📲 STEP 3: 機体BLE静止基準姿勢の取得
+                </span>
+                <button
+                  type="button"
+                  className={styles.captureGpsBigBtn}
+                  onClick={handleBleCaptureBaseline}
+                  disabled={isBleConnecting}
+                >
+                  {isBleConnecting
+                    ? "⏳ BLE基準取得中..."
+                    : activeBleCapture
+                      ? `✓ 基準取得完了 (Z: ${activeBleCapture.baseline_az_mg}mg / ${activeBleCapture.quality}) - 再取得`
+                      : "📲 BLEで静止基準姿勢を取得"}
+                </button>
+                {bleStatusMessage && (
+                  <div
+                    className={styles.nfcNoticeBanner}
+                    role="status"
+                    style={{ marginTop: "6px" }}
+                  >
+                    {bleStatusMessage}
+                  </div>
+                )}
               </div>
 
               <div className={styles.capturedSummary}>

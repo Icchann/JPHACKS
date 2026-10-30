@@ -554,4 +554,48 @@ describe("MobileHome", () => {
       }),
     );
   });
+
+  it("設置登録画面でSTEP 3のBLE基準取得ボタンを押下して基準を取得できること (Issue #57, #71)", async () => {
+    render(
+      <MobileHome dataMode="demo" initialNodeId="T1" initialTab="register" />,
+    );
+
+    const bleBtn = screen.getByRole("button", {
+      name: /BLEで静止基準姿勢を取得/,
+    });
+    expect(bleBtn).toBeInTheDocument();
+    fireEvent.click(bleBtn);
+
+    expect(
+      await screen.findByText(/静止基準姿勢を取得しました/),
+    ).toBeInTheDocument();
+  });
+
+  it("オフラインPWA起動時にURLクエリ ?node=S1 から指定機体IDが確実に復元されること (Issue #73)", async () => {
+    const originalLocation = window.location;
+    const mockLocation = new URL(
+      "http://localhost/mobile?node=S1",
+    ) as unknown as Location;
+    Object.defineProperty(window, "location", {
+      value: mockLocation,
+      writable: true,
+      configurable: true,
+    });
+
+    try {
+      render(
+        <MobileHome dataMode="demo" initialNodeId="T1" initialTab="register" />,
+      );
+
+      // クライアント側でURLの ?node=S1 を拾ってS1が選択されること
+      expect(await screen.findByDisplayValue("S1")).toBeInTheDocument();
+      expect(screen.getByText("手動選択: S1")).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "location", {
+        value: originalLocation,
+        writable: true,
+        configurable: true,
+      });
+    }
+  });
 });

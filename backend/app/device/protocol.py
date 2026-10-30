@@ -4,13 +4,16 @@ from dataclasses import dataclass
 
 PACKET_TYPE_S0 = "S0"
 PACKET_TYPE_S1 = "S1"
+PACKET_TYPE_O2 = "O2"
 PACKET_TYPE = PACKET_TYPE_S0  # 下位互換性用エイリアス
 FIELD_COUNT_S0 = 10
+FIELD_COUNT_O2 = 12
 FIELD_COUNT_S1 = 13
 FIELD_COUNT = FIELD_COUNT_S0  # 下位互換性用エイリアス
 NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 INSTALLATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 BOOT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+PROFILE_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
 
 class InvalidSerialRecord(ValueError):
@@ -33,6 +36,10 @@ class SerialObservation:
     installation_id: str | None = None
     boot_id: str | None = None
     config_version: int = 1
+    profile: str | None = None
+    ax_mg_raw: float | None = None
+    ay_mg_raw: float | None = None
+    az_mg_raw: float | None = None
 
     @property
     def soil_raw_measured(self) -> int | None:
@@ -76,25 +83,35 @@ def _parse_integer(value: str, field_name: str) -> int:
         raise InvalidSerialRecord(f"{field_name}は整数である必要があります") from exc
 
 
+def _parse_float_to_mg(value: str, field_name: str) -> tuple[int, float]:
+    """O2形式の小数mgを四捨五入して整数mgとし、生小数値とともに返却する (Issue #69)。"""
+    try:
+        val = float(value)
+    except ValueError as exc:
+        raise InvalidSerialRecord(f"{field_name}は数値である必要があります") from exc
+    if not math.isfinite(val):
+        raise InvalidSerialRecord(f"{field_name}は有限の数値である必要があります")
+    return round(val), val
+
+
 def parse_serial_line(line: bytes | str) -> SerialObservation | None:
-    """S0またはS1レコードを解析し、それ以外の起動メッセージなどは無視する (Issue #56)。"""
+    """S0、S1、またはO2レコードを解析し、それ以外の起動行を無視する (Issue #56, #69)。"""
 
     if isinstance(line, bytes):
-        if not (line.startswith(b"S0,") or line.startswith(b"S1,")):
+        if not (line.startswith(b"S0,") or line.startswith(b"S1,") or line.startswith(b"O2,")):
             return None
         try:
             decoded = line.decode("ascii")
         except UnicodeDecodeError as exc:
             raise InvalidSerialRecord("シリアルレコードはASCIIである必要があります") from exc
     else:
-        if not (line.startswith("S0,") or line.startswith("S1,")):
+        if not (line.startswith("S0,") or line.startswith("S1,") or line.startswith("O2,")):
             return None
         decoded = line
 
     raw_line = decoded.rstrip("\r\n")
     fields = raw_line.split(",")
     packet_type = fields[0] if fields else ""
-
     if packet_type == PACKET_TYPE_S0:
         if len(fields) != FIELD_COUNT_S0:
             raise InvalidSerialRecord("S0レコードは10フィールドである必要があります")
@@ -170,6 +187,57 @@ def parse_serial_line(line: bytes | str) -> SerialObservation | None:
             installation_id=installation_id,
             boot_id=boot_id,
             config_version=_parse_non_negative_integer(config_version, "config_version"),
+        )
+
+    if packet_type == PACKET_TYPE_O2:
+        if len(fields) != FIELD_COUNT_O2:
+            raise InvalidSerialRecord("O2レコードは12フィールドである必要があります")
+        (
+            _,
+            node_id,
+            installation_id,
+            boot_id,
+            sample_seq,
+            sample_ms,
+            ax,
+            ay,
+            az,
+            soil_raw,
+            battery_mv,
+            profile,
+        ) = fields
+        if not NODE_ID_PATTERN.fullmatch(node_id):
+            raise InvalidSerialRecord("node_idの形式が不正です")
+        if not INSTALLATION_ID_PATTERN.fullmatch(installation_id):
+            raise InvalidSerialRecord("installation_idの形式が不正です")
+        if not BOOT_ID_PATTERN.fullmatch(boot_id):
+            raise InvalidSerialRecord("boot_idの形式が不正です")
+        if not PROFILE_PATTERN.fullmatch(profile):
+            raise InvalidSerialRecord("profileの形式が不正です")
+
+        parsed_ax_mg, ax_raw = _parse_float_to_mg(ax, "ax")
+        parsed_ay_mg, ay_raw = _parse_float_to_mg(ay, "ay")
+        parsed_az_mg, az_raw = _parse_float_to_mg(az, "az")
+
+        return SerialObservation(
+            packet_type=packet_type,
+            node_id=node_id,
+            seq=_parse_non_negative_integer(sample_seq, "sample_seq"),
+            hop=0,
+            sample_ms=_parse_non_negative_integer(sample_ms, "sample_ms"),
+            ax_mg=parsed_ax_mg,
+            ay_mg=parsed_ay_mg,
+            az_mg=parsed_az_mg,
+            soil_raw=_parse_integer(soil_raw, "soil_raw"),
+            battery_mv=_parse_integer(battery_mv, "battery_mv"),
+            raw_line=raw_line,
+            installation_id=installation_id,
+            boot_id=boot_id,
+            config_version=1,
+            profile=profile,
+            ax_mg_raw=ax_raw,
+            ay_mg_raw=ay_raw,
+            az_mg_raw=az_raw,
         )
 
     return None

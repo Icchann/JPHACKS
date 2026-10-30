@@ -87,45 +87,50 @@ JSONまたはTLV（初期実装はJSONバイト列）:
 
 ---
 
-## 4. LoRa パケット契約（S1新形式・S0互換）
+## 4. LoRa パケット契約（O2新形式・S1/S0互換）
 
-### 4.1 S1 パケット形式（新仕様・13項目）
+### 4.1 O2 パケット形式（引継ぎ仕様・12項目: Issue #69, #74）
 
-CSV文字列形式（末尾 `\r\n`）:
+```text
+O2,<node_id>,<installation_id>,<boot_id>,<sample_seq>,<sample_ms>,<ax>,<ay>,<az>,<soil_raw>,<battery_mv>,<profile>
+```
+
+- 各フィールド定義:
+  1. `packet_type`: 固定文字列 `"O2"`
+  2. `node_id`: 機体コード（例: `"T1"`）
+  3. `installation_id`: 物理設置ID（例: `"inst_T1_20261030_100000"`）
+  4. `boot_id`: 起動セッションID（例: `"b_0001"`）
+  5. `sample_seq`: 当該起動内での観測連番（`0, 1, 2, ...`）
+  6. `sample_ms`: 機体起動後ミリ秒
+  7. `ax`: X軸加速度 (小数mg、0.25mg刻み)
+  8. `ay`: Y軸加速度 (小数mg、0.25mg刻み)
+  9. `az`: Z軸加速度 (小数mg、0.25mg刻み)
+  10. `soil_raw`: 土壌水分ADC生値（未計測時は `-1`）
+  11. `battery_mv`: 電池電圧ミリボルト（未計測時は `-1`）
+  12. `profile`: 測定設定プロファイル文字列（例: `"a367q1"` = ADXL367 14bit ±2g 0.25mg/count 25Hz）
+
+### 4.2 S1 パケット形式（13項目）
+
 ```text
 S1,<node_id>,<installation_id>,<boot_id>,<sample_seq>,<hop>,<sample_ms>,<ax_mg>,<ay_mg>,<az_mg>,<soil_raw>,<battery_mv>,<config_version>
 ```
 
-- 各フィールド定義:
-  1. `packet_type`: 固定文字列 `"S1"`
-  2. `node_id`: 機体コード（例: `"T1"`）
-  3. `installation_id`: 現在機体に設定されている物理設置ID（例: `"inst_T1_20261029_090000"`）
-  4. `boot_id`: 起動セッションID（例: `"b_0001_a9f2"`）
-  5. `sample_seq`: 当該起動内での観測連番（`0, 1, 2, ...`）
-  6. `hop`: 中継ホップ数（自機直接送信時は `0`）
-  7. `sample_ms`: 機体起動後ミリ秒
-  8. `ax_mg`: X軸加速度 (mg、符号付き整数、通常範囲 -2000〜2000)
-  9. `ay_mg`: Y軸加速度 (mg、符号付き整数)
-  10. `az_mg`: Z軸加速度 (mg、符号付き整数)
-  11. `soil_raw`: 土壌水分ADC生値（未計測時は `-1`）
-  12. `battery_mv`: 電池電圧ミリボルト（未計測時は `-1`）
-  13. `config_version`: 測定レンジ・フィルター設定版（整数、現行は `1`）
-
-### 4.2 S0 パケット形式（旧仕様・10項目、下位互換性維持）
+### 4.3 S0 パケット形式（旧仕様・10項目、下位互換性維持）
 
 ```text
 S0,<node_id>,<seq>,<hop>,<sample_ms>,<ax_mg>,<ay_mg>,<az_mg>,<soil_raw>,<battery_mv>
 ```
-PCバックエンドはS0行を受信した場合、`installation_id = "legacy_s0"`、`boot_id = "legacy"`、`config_version = 0` として透過的に解析し、旧機体からの通信を遮断しない。
+PCバックエンドはS0、S1、O2のいずれを受信した場合も透過的に解析し、旧機体・新機体の混在通信を安全に処理する。O2形式の小数mgは、判定・DB保存において実用十分な精度（1mg単位への四捨五入）を行い、生小数値も保持する。
 
 ---
 
-## 5. 測定設定仕様（config_version = 1）
+## 5. 測定設定仕様（config_version = 1 / profile = a367q1）
 
 BLE基準取得とLoRa観測で同一の重力ベクトル比較を行うため、センサー設定を厳密に固定する。
 
 - センサーIC: Analog Devices ADXL367
-- 測定レンジ: ±2g（16-bitモード、感度: 1mg/LSB）
-- 出力データレート (ODR): 12.5 Hz (サンプリング周期 80ms)
+- 測定レンジ: ±2g（14-bit左詰めモード、感度: 0.25mg/count）
+- 出力データレート (ODR): 25 Hz (サンプリング周期 40ms)
 - フィルター帯域: 1/4 ODR (ナイキスト周波数以下に制限し高周波振動をカット)
-- 静止判定条件: 2000ms（25サンプル）中の各軸分散 $\sigma^2 \le 100\,\text{mg}^2$、かつ合成加速度 $800\,\text{mg} \le |\mathbf{a}| \le 1200\,\text{mg}$
+- 静止判定条件: 2000ms（50サンプル）中の各軸分散 $\sigma^2 \le 100\,\text{mg}^2$、かつ合成加速度 $750\,\text{mg} \le |\mathbf{a}| \le 1250\,\text{mg}$
+- BLE待受時間: 電源投入後 180秒（3分間）待受

@@ -34,6 +34,26 @@ size_t sanmou_format_s1_packet(
     uint8_t config_version
 );
 
+/*
+ * O2パケット（引継ぎ仕様・12項目）をフォーマットしてバッファへ書き込む (Issue #69, #74)
+ * 出力形式: O2,<node_id>,<installation_id>,<boot_id>,<sample_seq>,<sample_ms>,<ax>,<ay>,<az>,<soil_raw>,<battery_mv>,<profile>\r\n
+ */
+size_t sanmou_format_o2_packet(
+    char *out_buf,
+    size_t max_len,
+    const char *node_id,
+    const char *installation_id,
+    const char *boot_id,
+    uint32_t sample_seq,
+    uint32_t sample_ms,
+    float ax_mg,
+    float ay_mg,
+    float az_mg,
+    int16_t soil_raw,
+    int16_t battery_mv,
+    const char *profile
+);
+
 #ifdef __cplusplus
 }
 #endif

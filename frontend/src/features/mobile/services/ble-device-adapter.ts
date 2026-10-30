@@ -54,7 +54,7 @@ export class MockBluetoothAdapter implements BleDeviceAdapter {
   }
   async connectAndVerifyNode(expectedNodeId: string): Promise<boolean> {
     void expectedNodeId;
-    await delay(300);
+    await delay(20);
     return true;
   }
 
@@ -64,16 +64,16 @@ export class MockBluetoothAdapter implements BleDeviceAdapter {
     onProgress?: BleProgressCallback,
   ): Promise<CaptureData> {
     onProgress?.("connecting", "機体とBluetooth接続中...");
-    await delay(400);
+    await delay(20);
 
     onProgress?.("wait_still", "静止判定中: 機体から手を離してください...");
-    await delay(800);
+    await delay(30);
 
     onProgress?.("sampling", "静止姿勢サンプリング中 (20サンプル)...");
-    await delay(1000);
+    await delay(30);
 
     onProgress?.("committed", "機体NVSへ基準姿勢を永続化しました");
-    await delay(300);
+    await delay(20);
 
     return {
       capture_id: `cap_mock_${Date.now()}`,
@@ -169,21 +169,19 @@ export class WebBluetoothAdapter implements BleDeviceAdapter {
         SANMOU_BLE_STATUS_CHAR_UUID,
       );
 
-      // デバイス名から機体IDを照合
-      const deviceName = this.device.name || "";
-      if (deviceName && !deviceName.includes(expectedNodeId)) {
-        // デバイス名に含まれない場合でも、状態キャラクタリスティックのnode_idを読み取って照合
-        const val = await this.statusChar.readValue();
-        const decoder = new TextDecoder("utf-8");
-        const jsonText = decoder.decode(val);
-        const parsed = JSON.parse(jsonText) as { node_id?: string };
-        if (parsed.node_id && parsed.node_id !== expectedNodeId) {
-          throw new Error(
-            `選択された機体 (${parsed.node_id}) はNFCで指定された機体 (${expectedNodeId}) と一致しません`,
-          );
-        }
+      // 機体IDの厳格な完全照合（部分一致を排除: Issue #71）
+      const val = await this.statusChar.readValue();
+      const decoder = new TextDecoder("utf-8");
+      const jsonText = decoder.decode(val);
+      const parsed = JSON.parse(jsonText) as { node_id?: string };
+      if (
+        !parsed.node_id ||
+        parsed.node_id.toUpperCase() !== expectedNodeId.toUpperCase()
+      ) {
+        throw new Error(
+          `選択された機体 (${parsed.node_id ?? "未識別"}) はNFCで指定された機体 (${expectedNodeId}) と一致しません`,
+        );
       }
-
       return true;
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "NotFoundError") {
@@ -248,16 +246,40 @@ export class WebBluetoothAdapter implements BleDeviceAdapter {
           onProgress?.("sampling", "静止区間をサンプリング中...");
         } else if (res.status === "committed") {
           onProgress?.("committed", "機体NVSへ基準姿勢の保存が完了しました");
+          // 機体応答の必須項目検証（補完値・デフォルト値の偽装を完全排除: Issue #71）
+          if (
+            !res.capture_id ||
+            typeof res.baseline_ax_mg !== "number" ||
+            typeof res.baseline_ay_mg !== "number" ||
+            typeof res.baseline_az_mg !== "number" ||
+            typeof res.variance_mg2 !== "number" ||
+            typeof res.sample_count !== "number" ||
+            typeof res.duration_ms !== "number" ||
+            !res.quality ||
+            typeof res.config_version !== "number"
+          ) {
+            throw new Error(
+              "機体からの基準姿勢応答に必要な項目が不足しています",
+            );
+          }
+          if (
+            res.baseline_ax_mg === 0 &&
+            res.baseline_ay_mg === 0 &&
+            res.baseline_az_mg === 0
+          ) {
+            throw new Error("機体から全軸ゼロの異常な基準姿勢が返却されました");
+          }
+
           return {
-            capture_id: res.capture_id || `cap_${Date.now()}`,
-            baseline_ax_mg: res.baseline_ax_mg ?? 0,
-            baseline_ay_mg: res.baseline_ay_mg ?? 0,
-            baseline_az_mg: res.baseline_az_mg ?? 1000,
-            variance_mg2: res.variance_mg2 ?? 0,
-            sample_count: res.sample_count ?? 20,
-            duration_ms: res.duration_ms ?? 2000,
-            quality: res.quality ?? "good",
-            config_version: res.config_version ?? 1,
+            capture_id: res.capture_id,
+            baseline_ax_mg: res.baseline_ax_mg,
+            baseline_ay_mg: res.baseline_ay_mg,
+            baseline_az_mg: res.baseline_az_mg,
+            variance_mg2: res.variance_mg2,
+            sample_count: res.sample_count,
+            duration_ms: res.duration_ms,
+            quality: res.quality,
+            config_version: res.config_version,
           };
         } else if (res.status === "error_unstable") {
           throw new Error(
@@ -269,9 +291,11 @@ export class WebBluetoothAdapter implements BleDeviceAdapter {
           throw new Error("機体操作の認証トークンが一致しません");
         }
       } catch (err: unknown) {
-        if (err instanceof Error && err.message.includes("静止基準")) {
+        // 明示的なエラー（認証失敗、センサー異常、揺れ過大、必須欠落等）は即座に伝播
+        if (err instanceof Error) {
           throw err;
         }
+        throw new Error(String(err), { cause: err });
       }
     }
 

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.device.protocol import SerialObservation, calculate_tilt_angle_deg
 from app.models.installation import AlertEvent, Capture, Installation
-from app.models.sensor import SensorEvaluationState
+from app.models.sensor import Sensor, SensorEvaluationState
 
 # しきい値定数 (度)
 DEFAULT_CAUTION_THRESHOLD_DEG = 15.0
@@ -93,11 +93,18 @@ def evaluate_sensor_observation(
             alert_cleared=False,
         )
 
-    # 3. 設置IDの一致検証 (S1パケットの場合)
-    if (
-        observation.installation_id is not None
-        and observation.installation_id != inst.installation_id
-    ):
+    # 3. 設置IDおよび測定設定版の一致検証 (旧形式や別設定を誤判定しない: Issue #72)
+    if observation.installation_id is None:
+        return PostureEvaluationResult(
+            node_id=observation.node_id,
+            evaluated=False,
+            tilt_degrees=None,
+            severity="unknown",
+            reason="観測パケットに設置ID（installation_id）が含まれていません（旧形式または未確定）",
+            alert_triggered=False,
+            alert_cleared=False,
+        )
+    if observation.installation_id != inst.installation_id:
         return PostureEvaluationResult(
             node_id=observation.node_id,
             evaluated=False,
@@ -110,7 +117,19 @@ def evaluate_sensor_observation(
             alert_triggered=False,
             alert_cleared=False,
         )
-
+    if observation.config_version != cap.config_version:
+        return PostureEvaluationResult(
+            node_id=observation.node_id,
+            evaluated=False,
+            tilt_degrees=None,
+            severity="unknown",
+            reason=(
+                f"観測パケットの設定版 ({observation.config_version}) が"
+                f"基準の設定版 ({cap.config_version}) と一致しません"
+            ),
+            alert_triggered=False,
+            alert_cleared=False,
+        )
     # 4. 角度差の計算 (重力ベクトルの内積)
     tilt_deg = calculate_tilt_angle_deg(
         float(observation.ax_mg),
@@ -183,18 +202,22 @@ def evaluate_sensor_observation(
             db.add(new_alert)
             alert_triggered = True
 
-    # 7. sensor_evaluation_states の観測重要度を更新
-    eval_state = db.scalar(
-        select(SensorEvaluationState).where(
-            SensorEvaluationState.sensor_id.in_(
-                select(Installation.node_id).where(Installation.node_id == observation.node_id)
+    # 7. 台帳（Sensor）および sensor_evaluation_states の観測重要度・最終受信を更新 (Issue #72)
+    sensor = db.scalar(select(Sensor).where(Sensor.sensor_code == observation.node_id))
+    if sensor:
+        sensor.last_received_at = evaluated_at
+        if sensor.evaluation_state:
+            sensor.evaluation_state.observation_severity = severity
+            sensor.evaluation_state.last_evaluated_at = evaluated_at
+        else:
+            new_eval = SensorEvaluationState(
+                sensor_id=sensor.id,
+                observation_severity=severity,
+                communication_status="online",
+                device_fault_status="ok",
+                last_evaluated_at=evaluated_at,
             )
-        )
-    )
-    if eval_state:
-        eval_state.observation_severity = severity
-        eval_state.last_evaluated_at = evaluated_at
-
+            db.add(new_eval)
     db.commit()
 
     return PostureEvaluationResult(

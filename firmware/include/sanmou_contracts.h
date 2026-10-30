@@ -17,19 +17,21 @@
 extern "C" {
 #endif
 
-/* 測定設定版 */
+/* 測定設定版・プロファイル (ADXL367 14bit, ±2g, 0.25mg/count, 25Hz: Issue #69, #74) */
 #define SANMOU_CONFIG_VERSION 1
+#define SANMOU_PROFILE_A367Q1 "a367q1"
+#define SANMOU_PACKET_TYPE_O2 "O2"
 
-/* 静止基準取得パラメータ */
-#define SANMOU_STILL_SAMPLE_COUNT 20       /* 基準取得に必要な静止サンプル数 */
-#define SANMOU_STILL_INTERVAL_MS 100       /* サンプリング間隔(10Hz = 100ms) */
+/* 静止基準取得パラメータ (25Hz x 2秒 = 50サンプル) */
+#define SANMOU_STILL_SAMPLE_COUNT 50       /* 基準取得に必要な静止サンプル数 */
+#define SANMOU_STILL_INTERVAL_MS 40        /* サンプリング間隔(25Hz = 40ms) */
 #define SANMOU_STILL_TIMEOUT_MS 15000      /* 静止待ちタイムアウト(15秒) */
 #define SANMOU_MAX_VARIANCE_MG2 100        /* 許容加速度分散 (mg^2) */
 #define SANMOU_MIN_GRAVITY_MG 750          /* 静止重力合成ベクトルの許容最小値 (mg) */
 #define SANMOU_MAX_GRAVITY_MG 1250         /* 静止重力合成ベクトルの許容最大値 (mg) */
 
-/* BLE 待受設定 */
-#define SANMOU_BLE_ADVERTISING_TIMEOUT_SEC 300 /* 電源投入後5分待受 */
+/* BLE 待受設定 (Issue #74: 電源投入後3分待受) */
+#define SANMOU_BLE_ADVERTISING_TIMEOUT_SEC 180 /* 電源投入後3分待受 */
 #define SANMOU_AUTH_TOKEN "sanmou-field-token-2026"
 
 /* BLE UUID 定義 */

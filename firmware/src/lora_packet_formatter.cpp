@@ -52,3 +52,42 @@ size_t sanmou_format_s1_packet(
 
     return (written > 0 && (size_t)written < max_len) ? (size_t)written : 0;
 }
+
+size_t sanmou_format_o2_packet(
+    char *out_buf,
+    size_t max_len,
+    const char *node_id,
+    const char *installation_id,
+    const char *boot_id,
+    uint32_t sample_seq,
+    uint32_t sample_ms,
+    float ax_mg,
+    float ay_mg,
+    float az_mg,
+    int16_t soil_raw,
+    int16_t battery_mv,
+    const char *profile
+) {
+    if (!out_buf || max_len == 0 || !node_id || !installation_id || !boot_id || !profile) {
+        return 0;
+    }
+
+    int written = snprintf(
+        out_buf,
+        max_len,
+        "O2,%s,%s,%s,%u,%u,%.2f,%.2f,%.2f,%d,%d,%s\r\n",
+        node_id,
+        installation_id,
+        boot_id,
+        (unsigned)sample_seq,
+        (unsigned)sample_ms,
+        ax_mg,
+        ay_mg,
+        az_mg,
+        soil_raw,
+        battery_mv,
+        profile
+    );
+
+    return (written > 0 && (size_t)written < max_len) ? (size_t)written : 0;
+}
