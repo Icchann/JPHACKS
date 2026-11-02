@@ -30,7 +30,7 @@ export type InstallationConfirmRequest = {
   position_accuracy_m: number | null;
   identity_method: "web_nfc" | "url" | "manual";
   position_method: "gps" | "manual" | "demo_preset";
-  capture: CaptureData;
+  capture: CaptureData | null;
   expected_version: number;
 };
 
@@ -39,7 +39,7 @@ export type InstallationConfirmResponse = {
   request_id: string;
   node_id: string;
   installation_id: string;
-  capture_id: string;
+  capture_id: string | null;
   confirmed_at: string;
   message: string;
 };
@@ -63,7 +63,7 @@ export type PendingInstallationRecord = {
   positionAccuracyM: number | null;
   identityMethod: "web_nfc" | "url" | "manual";
   positionMethod: "gps" | "manual" | "demo_preset";
-  capture: CaptureData;
+  capture: CaptureData | null;
   syncStatus: InstallationSyncStatus;
   createdAt: string;
   lastAttemptAt?: string;

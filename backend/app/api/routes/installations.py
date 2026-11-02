@@ -51,19 +51,19 @@ def confirm_installation(
     req: InstallationConfirmRequest,
     db: Annotated[Session, Depends(get_db_session)],
 ) -> InstallationConfirmResponse:
-    # 1. 基準姿勢の異常値検査（全軸ゼロまたは極端な異常値）
+    # 1. 基準姿勢の異常値検査（CaptureDataが存在する場合のみ実施: Issue #76）
     cap = req.capture
-    if cap.baseline_ax_mg == 0 and cap.baseline_ay_mg == 0 and cap.baseline_az_mg == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="全軸ゼロの基準加速度は無効です",
-        )
-    if cap.quality == "rejected":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="品質がrejectedの基準姿勢は登録できません",
-        )
-
+    if cap is not None:
+        if cap.baseline_ax_mg == 0 and cap.baseline_ay_mg == 0 and cap.baseline_az_mg == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="全軸ゼロの基準加速度は無効です",
+            )
+        if cap.quality == "rejected":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="品質がrejectedの基準姿勢は登録できません",
+            )
     payload_hash = _calc_payload_hash(req)
 
     # 2. 既存の冪等ログを検索
@@ -138,21 +138,22 @@ def confirm_installation(
     )
     db.add(new_inst)
 
-    # 5. 不変 Capture レコードの作成
-    new_cap = Capture(
-        capture_id=cap.capture_id,
-        installation_id=req.installation_id,
-        node_id=req.node_id,
-        baseline_ax_mg=cap.baseline_ax_mg,
-        baseline_ay_mg=cap.baseline_ay_mg,
-        baseline_az_mg=cap.baseline_az_mg,
-        variance_mg2=cap.variance_mg2,
-        sample_count=cap.sample_count,
-        duration_ms=cap.duration_ms,
-        quality=cap.quality,
-        config_version=cap.config_version,
-    )
-    db.add(new_cap)
+    # 5. 不変 Capture レコードの作成（基準姿勢が存在する場合のみ: Issue #76）
+    if cap is not None:
+        new_cap = Capture(
+            capture_id=cap.capture_id,
+            installation_id=req.installation_id,
+            node_id=req.node_id,
+            baseline_ax_mg=cap.baseline_ax_mg,
+            baseline_ay_mg=cap.baseline_ay_mg,
+            baseline_az_mg=cap.baseline_az_mg,
+            variance_mg2=cap.variance_mg2,
+            sample_count=cap.sample_count,
+            duration_ms=cap.duration_ms,
+            quality=cap.quality,
+            config_version=cap.config_version,
+        )
+        db.add(new_cap)
 
     # 6. 台帳 (Sensor) の最新化、未登録時は自動作成 (Issue #72)
     sensor = db.scalar(select(Sensor).where(Sensor.sensor_code == req.node_id))
@@ -196,11 +197,14 @@ def confirm_installation(
         request_id=req.request_id,
         node_id=req.node_id,
         installation_id=req.installation_id,
-        capture_id=cap.capture_id,
+        capture_id=cap.capture_id if cap else None,
         confirmed_at=now_utc,
-        message="設置および基準姿勢を正常に確定しました",
+        message=(
+            "設置および基準姿勢を正常に確定しました"
+            if cap
+            else "設置位置を仮登録しました（基準姿勢未設定・監視待機）"
+        ),
     )
-
     # 7. 冪等要求ログの永続化
     log_entry = SyncRequestLog(
         request_id=req.request_id,

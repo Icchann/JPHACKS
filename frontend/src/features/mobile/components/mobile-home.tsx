@@ -464,6 +464,46 @@ export function MobileHome({
   }, [storageKey]);
   const [isSyncingPending, setIsSyncingPending] = useState(false);
 
+  // 機体の最新設置世代情報（再設置・CAS世代競合制御用: Issue #75）
+  const [nodeVersionInfo, setNodeVersionInfo] = useState<{
+    currentVersion: number;
+    isExisting: boolean;
+  }>({ currentVersion: 1, isExisting: false });
+
+  useEffect(() => {
+    if (dataMode === "demo") return;
+    let isCancelled = false;
+    const fetchActiveVersion = async () => {
+      try {
+        const res = await fetch(
+          `/api/test-installations/nodes/${encodeURIComponent(regNodeId)}/active`,
+        );
+        if (isCancelled) return;
+        if (res.ok) {
+          const data = (await res.json()) as { version?: number };
+          setNodeVersionInfo({
+            currentVersion: data.version ?? 1,
+            isExisting: true,
+          });
+        } else {
+          setNodeVersionInfo({ currentVersion: 1, isExisting: false });
+        }
+      } catch {
+        if (!isCancelled) {
+          setNodeVersionInfo({ currentVersion: 1, isExisting: false });
+        }
+      }
+    };
+    void fetchActiveVersion();
+    return () => {
+      isCancelled = true;
+    };
+  }, [dataMode, regNodeId]);
+
+  const hasValidBleSession =
+    activeBleSession !== null &&
+    activeBleSession.nodeId.toUpperCase() === regNodeId.trim().toUpperCase();
+
   // 警報トリガー（傾き検知または手動テスト）
   const triggerAlarm = useCallback(
     (reason: string) => {
@@ -1091,6 +1131,11 @@ export function MobileHome({
       : `inst_${cleanNodeId}_${Date.now()}`;
 
     // オンライン接続時：BLEセッションがある場合は設置確定APIへ送り位置＋基準を一括確定 (Issue #77)
+    const targetVersion = nodeVersionInfo?.isExisting
+      ? nodeVersionInfo.currentVersion
+      : 1;
+
+    // オンライン接続時：BLEセッションがある場合は設置確定API (/api/test-installations/confirm) へ送り位置＋基準を一括確定 (Issue #75, #77)
     if (hasValidBleSession) {
       try {
         const confirmRes = await fetch("/api/test-installations/confirm", {
@@ -1111,15 +1156,21 @@ export function MobileHome({
             position_accuracy_m: gpsAccuracy,
             identity_method: identityMethod,
             position_method: positionMethod,
-            capture: activeBleSession.capture,
-            expected_version: 1,
+            capture: hasValidBleSession ? activeBleSession.capture : null,
+            expected_version: targetVersion,
           }),
         });
         if (confirmRes.ok) {
           setSelectedNodeId(cleanNodeId);
           setActiveBleSession(null);
+          setNodeVersionInfo({
+            currentVersion: targetVersion + 1,
+            isExisting: true,
+          });
           setRegSuccessMessage(
-            `✓ [${methodLabel}確定] 機体 ${cleanNodeId} の位置と基準姿勢をPCへ確定登録しました！`,
+            hasValidBleSession
+              ? `✓ [${methodLabel}確定] 機体 ${cleanNodeId} の位置と基準姿勢をPCへ確定登録しました（第${targetVersion + 1}世代）！`
+              : `✓ [${methodLabel}仮登録] 機体 ${cleanNodeId} の位置情報をPC台帳に仮登録しました（基準姿勢未設定・第${targetVersion + 1}世代）！`,
           );
           return;
         }
@@ -1127,7 +1178,6 @@ export function MobileHome({
         // オフラインまたは通信失敗時は下のキュー保存へ進む
       }
     }
-
     const result = await sendRegistrationToBackend({
       sensor_code: cleanNodeId,
       name: cleanName,
@@ -1182,25 +1232,22 @@ export function MobileHome({
       position_method: positionMethod,
     };
 
-    // BLEセッションがある場合にのみ IndexedDB 設置キューへ保存 (架空基準の捏造排除: Issue #76)
-    if (hasValidBleSession) {
-      const captureToSave: CaptureData = activeBleSession.capture;
-      const pendingRecord: PendingInstallationRecord = {
-        requestId: sessionRequestId,
-        nodeId: cleanNodeId,
-        installationId: sessionInstallationId,
-        installedAt: installedAtIso,
-        latitude: latNum,
-        longitude: lonNum,
-        positionAccuracyM: gpsAccuracy,
-        identityMethod,
-        positionMethod,
-        capture: captureToSave,
-        syncStatus: "local_saved",
-        createdAt: new Date().toISOString(),
-      };
-      await savePendingInstallation(pendingRecord).catch(() => {});
-    }
+    // 圏外時は端末内キュー（IndexedDB: Issue #60, #71, #75, #76）に保存
+    const pendingRecord: PendingInstallationRecord = {
+      requestId: sessionRequestId,
+      nodeId: cleanNodeId,
+      installationId: sessionInstallationId,
+      installedAt: installedAtIso,
+      latitude: latNum,
+      longitude: lonNum,
+      positionAccuracyM: gpsAccuracy,
+      identityMethod,
+      positionMethod,
+      capture: hasValidBleSession ? activeBleSession.capture : null,
+      syncStatus: "local_saved",
+      createdAt: new Date().toISOString(),
+    };
+    await savePendingInstallation(pendingRecord).catch(() => {});
 
     const nextQueue = [
       ...pendingRegistrations.filter(
@@ -1708,10 +1755,28 @@ export function MobileHome({
                       : "未測位（参考プリセット座標）"}
                   </span>
                 </div>
+                <div className={styles.summaryRow}>
+                  <span>設置世代:</span>
+                  <strong>
+                    {nodeVersionInfo?.isExisting
+                      ? `既存設置: 第${nodeVersionInfo.currentVersion}世代 → 今回登録: 第${nodeVersionInfo.currentVersion + 1}世代（再設置）`
+                      : "第1世代（新規設置）"}
+                  </strong>
+                </div>
+                <div className={styles.summaryRow}>
+                  <span>基準姿勢:</span>
+                  <span>
+                    {hasValidBleSession
+                      ? `✓ BLE取得済み (Z: ${activeBleSession.capture.baseline_az_mg}mg)`
+                      : "⚠️ 未取得（位置情報のみ仮登録）"}
+                  </span>
+                </div>
               </div>
 
               <button type="submit" className={styles.submitRegistrationBtn}>
-                この位置・時刻で機体を固定登録
+                {hasValidBleSession
+                  ? `この位置とBLE基準で機体を固定登録（${nodeVersionInfo?.isExisting ? `第${nodeVersionInfo.currentVersion + 1}世代に更新` : "新規"}）`
+                  : "この位置・時刻で機体を固定登録"}
               </button>
             </form>
 

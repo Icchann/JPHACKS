@@ -41,7 +41,9 @@ class InstallationConfirmRequest(BaseModel):
     position_method: Literal["gps", "manual", "demo_preset"] = Field(
         "gps", description="座標取得手法"
     )
-    capture: CaptureData = Field(..., description="機体が確定した基準姿勢データ")
+    capture: CaptureData | None = Field(
+        None, description="機体が確定した基準姿勢データ (未取得・仮登録時はNone)"
+    )
     expected_version: int = Field(1, ge=1, description="競合防止用期待世代番号")
 
 
@@ -54,7 +56,7 @@ class InstallationConfirmResponse(BaseModel):
     request_id: str = Field(..., description="要求ID")
     node_id: str = Field(..., description="機体コード")
     installation_id: str = Field(..., description="物理設置ID")
-    capture_id: str = Field(..., description="基準取得ID")
+    capture_id: str | None = Field(None, description="基準取得ID")
     confirmed_at: datetime = Field(..., description="PC側確定保存日時(UTC)")
     message: str = Field(..., description="結果メッセージ")
 
