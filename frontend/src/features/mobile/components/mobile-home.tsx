@@ -42,6 +42,14 @@ type PendingRegistration = {
   position_method?: "gps" | "manual" | "demo_preset";
 };
 
+type BleInstallationSession = {
+  nodeId: string;
+  requestId: string;
+  installationId: string;
+  capture: CaptureData;
+  capturedAt: string;
+};
+
 // Web NFC API (NDEFReader) の型定義（Android Chrome 等で標準対応）
 type NdefRecordInit = {
   recordType: string;
@@ -407,9 +415,8 @@ export function MobileHome({
   const [operatorToken, setOperatorToken] = useState<string>("");
   const [bleStatusMessage, setBleStatusMessage] = useState<string | null>(null);
   const [isBleConnecting, setIsBleConnecting] = useState(false);
-  const [activeBleCapture, setActiveBleCapture] = useState<CaptureData | null>(
-    null,
-  );
+  const [activeBleSession, setActiveBleSession] =
+    useState<BleInstallationSession | null>(null);
   useEffect(() => {
     // クライアントマウント後に現在時刻と保存済みキューを非同期にロードし、Hydration Mismatch を防ぐ（Issue #49）
     const timerId = window.setTimeout(() => {
@@ -598,6 +605,10 @@ export function MobileHome({
       });
       setCapturedTime(nowStr);
       setNfcTagDetectedId(isPhysicalNfc ? cleanId : null);
+      // 機体選択が変更された場合は別機体のBLE基準セッションを無効化（Issue #75）
+      setActiveBleSession((prev) =>
+        prev && prev.nodeId !== cleanId ? null : prev,
+      );
       setActiveTab("register");
       setRegSuccessMessage(null);
       setRegNoticeMessage(
@@ -942,19 +953,28 @@ export function MobileHome({
     }
   };
 
-  // BLEによる静止基準姿勢の取得 (Issue #57, #71)
+  // BLEによる静止基準姿勢の取得 (Issue #57, #71, #75, #76)
   const handleBleCaptureBaseline = async () => {
     const cleanNodeId = regNodeId.trim().toUpperCase() || "T1";
+
+    // dataMode が demo でない場合、Web Bluetooth 非対応環境なら Mock にフォールバックせず明示エラー（Issue #76）
+    if (dataMode !== "demo") {
+      if (typeof navigator === "undefined" || !("bluetooth" in navigator)) {
+        setBleStatusMessage(
+          "⚠️ お使いのブラウザはWeb Bluetooth APIに対応していません（Android Chrome等をご利用いただくか、デモモードをご利用ください）",
+        );
+        return;
+      }
+    }
+
     const adapter: BleDeviceAdapter =
       dataMode === "demo"
         ? new MockBluetoothAdapter()
-        : typeof navigator !== "undefined" && "bluetooth" in navigator
-          ? new WebBluetoothAdapter()
-          : new MockBluetoothAdapter();
+        : new WebBluetoothAdapter();
 
     if (!adapter.isSupported() && dataMode !== "demo") {
       setBleStatusMessage(
-        "⚠️ お使いのブラウザはWeb Bluetooth APIに対応していません (Android Chromeをご利用ください)",
+        "⚠️ お使いのブラウザはWeb Bluetooth APIに対応していません (Android Chrome等をご利用ください)",
       );
       return;
     }
@@ -978,7 +998,14 @@ export function MobileHome({
         },
       );
 
-      setActiveBleCapture(capture);
+      // 設置セッション（nodeId, requestId, installationId, capture）を一体保持 (Issue #75)
+      setActiveBleSession({
+        nodeId: cleanNodeId,
+        requestId,
+        installationId,
+        capture,
+        capturedAt: new Date().toISOString(),
+      });
       setBleStatusMessage(
         `✓ [${cleanNodeId}] 静止基準姿勢を取得しました (Z: ${capture.baseline_az_mg}mg / 品質: ${capture.quality})`,
       );
@@ -1048,6 +1075,59 @@ export function MobileHome({
           ? "demo_preset"
           : "manual";
 
+    const hasValidBleSession =
+      activeBleSession !== null &&
+      activeBleSession.nodeId.toUpperCase() === cleanNodeId;
+
+    // 設置IDと要求IDは、BLE取得セッションが存在する場合は同一セッションIDを引き継ぐ (Issue #75)
+    const sessionRequestId = hasValidBleSession
+      ? activeBleSession.requestId
+      : typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `req_${Date.now()}`;
+
+    const sessionInstallationId = hasValidBleSession
+      ? activeBleSession.installationId
+      : `inst_${cleanNodeId}_${Date.now()}`;
+
+    // オンライン接続時：BLEセッションがある場合は設置確定APIへ送り位置＋基準を一括確定 (Issue #77)
+    if (hasValidBleSession) {
+      try {
+        const confirmRes = await fetch("/api/test-installations/confirm", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(operatorToken
+              ? { "X-Sanmou-Operator-Token": operatorToken }
+              : {}),
+          },
+          body: JSON.stringify({
+            request_id: sessionRequestId,
+            node_id: cleanNodeId,
+            installation_id: sessionInstallationId,
+            installed_at: installedAtIso,
+            latitude: latNum,
+            longitude: lonNum,
+            position_accuracy_m: gpsAccuracy,
+            identity_method: identityMethod,
+            position_method: positionMethod,
+            capture: activeBleSession.capture,
+            expected_version: 1,
+          }),
+        });
+        if (confirmRes.ok) {
+          setSelectedNodeId(cleanNodeId);
+          setActiveBleSession(null);
+          setRegSuccessMessage(
+            `✓ [${methodLabel}確定] 機体 ${cleanNodeId} の位置と基準姿勢をPCへ確定登録しました！`,
+          );
+          return;
+        }
+      } catch {
+        // オフラインまたは通信失敗時は下のキュー保存へ進む
+      }
+    }
+
     const result = await sendRegistrationToBackend({
       sensor_code: cleanNodeId,
       name: cleanName,
@@ -1088,19 +1168,7 @@ export function MobileHome({
       return;
     }
 
-    // 圏外・オフライン時は端末内キュー（localStorage & IndexedDB: Issue #60, #71）に保存
-    const captureToSave: CaptureData = activeBleCapture ?? {
-      capture_id: `cap_${cleanNodeId}_${Date.now()}`,
-      baseline_ax_mg: 0,
-      baseline_ay_mg: 0,
-      baseline_az_mg: 1000,
-      variance_mg2: 10,
-      sample_count: 20,
-      duration_ms: 2000,
-      quality: "good",
-      config_version: 1,
-    };
-
+    // 圏外・オフライン時は端末内キュー（localStorage & IndexedDB: Issue #60, #71, #75, #76）に保存
     const entry: PendingRegistration = {
       sensor_code: cleanNodeId,
       name: cleanName,
@@ -1114,24 +1182,25 @@ export function MobileHome({
       position_method: positionMethod,
     };
 
-    const pendingRecord: PendingInstallationRecord = {
-      requestId:
-        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `req_${Date.now()}`,
-      nodeId: cleanNodeId,
-      installationId: `inst_${cleanNodeId}_${Date.now()}`,
-      installedAt: installedAtIso,
-      latitude: latNum,
-      longitude: lonNum,
-      positionAccuracyM: gpsAccuracy,
-      identityMethod,
-      positionMethod,
-      capture: captureToSave,
-      syncStatus: "local_saved",
-      createdAt: new Date().toISOString(),
-    };
-    await savePendingInstallation(pendingRecord).catch(() => {});
+    // BLEセッションがある場合にのみ IndexedDB 設置キューへ保存 (架空基準の捏造排除: Issue #76)
+    if (hasValidBleSession) {
+      const captureToSave: CaptureData = activeBleSession.capture;
+      const pendingRecord: PendingInstallationRecord = {
+        requestId: sessionRequestId,
+        nodeId: cleanNodeId,
+        installationId: sessionInstallationId,
+        installedAt: installedAtIso,
+        latitude: latNum,
+        longitude: lonNum,
+        positionAccuracyM: gpsAccuracy,
+        identityMethod,
+        positionMethod,
+        capture: captureToSave,
+        syncStatus: "local_saved",
+        createdAt: new Date().toISOString(),
+      };
+      await savePendingInstallation(pendingRecord).catch(() => {});
+    }
 
     const nextQueue = [
       ...pendingRegistrations.filter(
@@ -1547,6 +1616,10 @@ export function MobileHome({
                       const val = changeEvent.target.value.toUpperCase();
                       setRegNodeId(val);
                       setRegName(getDefaultNodeName(val || "T1"));
+                      // 手動変更時も別機体のセッションをリセット (Issue #75)
+                      setActiveBleSession((prev) =>
+                        prev && prev.nodeId !== val ? null : prev,
+                      );
                     }}
                     placeholder="例: T1"
                   />
@@ -1597,8 +1670,8 @@ export function MobileHome({
                 >
                   {isBleConnecting
                     ? "⏳ BLE基準取得中..."
-                    : activeBleCapture
-                      ? `✓ 基準取得完了 (Z: ${activeBleCapture.baseline_az_mg}mg / ${activeBleCapture.quality}) - 再取得`
+                    : activeBleSession && activeBleSession.nodeId === regNodeId
+                      ? `✓ 基準取得完了 (Z: ${activeBleSession.capture.baseline_az_mg}mg / ${activeBleSession.capture.quality}) - 再取得`
                       : "📲 BLEで静止基準姿勢を取得"}
                 </button>
                 {bleStatusMessage && (

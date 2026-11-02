@@ -598,4 +598,45 @@ describe("MobileHome", () => {
       });
     }
   });
+
+  it("機体選択が変更された場合に別機体のBLE基準セッションを無効化すること (Issue #75)", async () => {
+    render(
+      <MobileHome dataMode="demo" initialNodeId="T1" initialTab="register" />,
+    );
+
+    // T1でBLE基準取得
+    const bleBtn = screen.getByRole("button", {
+      name: /BLEで静止基準姿勢を取得/,
+    });
+    fireEvent.click(bleBtn);
+    expect(
+      await screen.findByText(/静止基準姿勢を取得しました/),
+    ).toBeInTheDocument();
+
+    // 機体をS1に変更
+    const s1Chip = screen.getByRole("button", { name: "S1" });
+    fireEvent.click(s1Chip);
+
+    // BLE取得がリセットされ、未取得状態のボタンに戻ること
+    expect(
+      screen.getByRole("button", { name: "📲 BLEで静止基準姿勢を取得" }),
+    ).toBeInTheDocument();
+  });
+
+  it("実機テストモードでBLE非対応環境の場合、モックにフォールバックせず非対応案内を表示すること (Issue #76)", async () => {
+    render(
+      <MobileHome dataMode="test" initialNodeId="T1" initialTab="register" />,
+    );
+
+    const bleBtn = screen.getByRole("button", {
+      name: /BLEで静止基準姿勢を取得/,
+    });
+    fireEvent.click(bleBtn);
+
+    expect(
+      await screen.findByText(
+        /お使いのブラウザはWeb Bluetooth APIに対応していません/,
+      ),
+    ).toBeInTheDocument();
+  });
 });

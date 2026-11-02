@@ -184,7 +184,12 @@ export async function syncPendingInstallationsToPc(
     results: [],
   };
 
-  const endpoint = `${pcBaseUrl.replace(/\/+$/, "")}/api/v1/installations/confirm`;
+  const cleanBase = pcBaseUrl.replace(/\/+$/, "");
+  const endpoint = cleanBase.includes("/api/")
+    ? cleanBase
+    : cleanBase.endsWith(":8000")
+      ? `${cleanBase}/api/v1/installations/confirm`
+      : `${cleanBase}/api/test-installations/confirm`;
 
   for (const item of toSync) {
     await updateInstallationSyncStatus(item.requestId, "syncing");
