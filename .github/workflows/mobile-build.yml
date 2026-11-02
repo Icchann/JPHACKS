@@ -28,9 +28,10 @@ jobs:
       - name: Install dependencies
         run: npm --prefix frontend ci
 
-      - name: Sync Capacitor iOS
-        run: cd frontend && npx cap sync ios
-
+      - name: Prepare mobile assets and sync Capacitor iOS
+        run: |
+          npm --prefix frontend run prepare:mobile
+          cd frontend && npx cap sync ios
       - name: Build iOS App with Xcode (Code Sign Not Required)
         run: |
           cd frontend/ios/App
@@ -59,9 +60,10 @@ jobs:
       - name: Install dependencies
         run: npm --prefix frontend ci
 
-      - name: Sync Capacitor Android
-        run: cd frontend && npx cap sync android
-
+      - name: Prepare mobile assets and sync Capacitor Android
+        run: |
+          npm --prefix frontend run prepare:mobile
+          cd frontend && npx cap sync android
       - name: Build Android Debug APK
         run: |
           cd frontend/android

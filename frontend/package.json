@@ -15,7 +15,9 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "api:types": "openapi-typescript openapi.json -o src/types/api.d.ts"
+    "api:types": "openapi-typescript openapi.json -o src/types/api.d.ts",
+    "prepare:mobile": "node scripts/prepare-mobile.js",
+    "cap:sync": "npm run prepare:mobile && npx cap sync"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.3.0",
