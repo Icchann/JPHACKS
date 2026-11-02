@@ -14,8 +14,7 @@ import type {
 } from "../../sensor-management/installation-contract-types";
 import {
   BleDeviceAdapter,
-  MockBluetoothAdapter,
-  WebBluetoothAdapter,
+  getRecommendedBleAdapter,
 } from "../services/ble-device-adapter";
 import {
   savePendingInstallation,
@@ -996,25 +995,11 @@ export function MobileHome({
   // BLEによる静止基準姿勢の取得 (Issue #57, #71, #75, #76)
   const handleBleCaptureBaseline = async () => {
     const cleanNodeId = regNodeId.trim().toUpperCase() || "T1";
-
-    // dataMode が demo でない場合、Web Bluetooth 非対応環境なら Mock にフォールバックせず明示エラー（Issue #76）
-    if (dataMode !== "demo") {
-      if (typeof navigator === "undefined" || !("bluetooth" in navigator)) {
-        setBleStatusMessage(
-          "⚠️ お使いのブラウザはWeb Bluetooth APIに対応していません（Android Chrome等をご利用いただくか、デモモードをご利用ください）",
-        );
-        return;
-      }
-    }
-
-    const adapter: BleDeviceAdapter =
-      dataMode === "demo"
-        ? new MockBluetoothAdapter()
-        : new WebBluetoothAdapter();
+    const adapter: BleDeviceAdapter = getRecommendedBleAdapter(dataMode);
 
     if (!adapter.isSupported() && dataMode !== "demo") {
       setBleStatusMessage(
-        "⚠️ お使いのブラウザはWeb Bluetooth APIに対応していません (Android Chrome等をご利用ください)",
+        "⚠️ お使いの環境はBLE直接通信に対応していません (Android Chromeまたは山網専用アプリをご利用ください)",
       );
       return;
     }
@@ -1882,6 +1867,49 @@ export function MobileHome({
                     <span className={styles.tokenActiveBadge}>✓ 設定中</span>
                   )}
                 </div>
+              </div>
+            </details>
+
+            {/* モバイルアプリ（iPhone / Android）のビルド・実行案内 */}
+            <details className={styles.devToolsDetails}>
+              <summary className={styles.devToolsSummary}>
+                📱 モバイルアプリ（iPhone / Android）のビルド・実行案内
+              </summary>
+              <div
+                className={styles.operatorTokenBox}
+                style={{ fontSize: "0.85rem", lineHeight: "1.5" }}
+              >
+                <p style={{ margin: "0 0 8px 0" }}>
+                  <strong>環境別の対応状況:</strong>
+                  <br />・<strong>Android</strong>:
+                  ブラウザ（Chrome）でもアプリ版（APK）でも NFC・BLE
+                  ともに直接利用可能。
+                  <br />・<strong>iPhone (iOS)</strong>: ブラウザ版では Apple
+                  の制限により BLE
+                  が動作しないため位置情報の仮登録として機能します。iPhone
+                  実機で BLE
+                  基準取得を完結させたい場合はアプリ版（Capacitor）を利用します。
+                </p>
+                <p style={{ margin: "0 0 8px 0" }}>
+                  <strong>
+                    Windows 環境（手元に Mac がない場合）のビルド方法:
+                  </strong>
+                  <br />・<strong>GitHub Actions クラウドビルド</strong>:
+                  リポジトリへ push すると、クラウド上の Mac ランナーで iOS
+                  ビルド検証が自動実行されます。また Android 用の{" "}
+                  <code>app-debug.apk</code> が自動生成され、Actions の
+                  Artifacts から直接ダウンロード可能です。
+                </p>
+                <p style={{ margin: "0" }}>
+                  <strong>手元に Mac がある場合の iPhone 直接書き込み:</strong>
+                  <br />・
+                  <code>
+                    cd frontend &amp;&amp; npx cap sync ios &amp;&amp; npx cap
+                    open ios
+                  </code>{" "}
+                  を実行し、Xcode から無料の個人の Apple ID で iPhone
+                  へ直接インストールできます（有料開発者登録不要）。
+                </p>
               </div>
             </details>
           </section>

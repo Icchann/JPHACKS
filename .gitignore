@@ -12,6 +12,13 @@ coverage/
 *.tsbuildinfo
 frontend/openapi.json
 frontend/src/types/api.d.ts
+frontend/out/
+frontend/ios/App/build/
+frontend/ios/App/Pods/
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/local.properties
 
 # Python
 __pycache__/

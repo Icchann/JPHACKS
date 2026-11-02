@@ -634,9 +634,7 @@ describe("MobileHome", () => {
     fireEvent.click(bleBtn);
 
     expect(
-      await screen.findByText(
-        /お使いのブラウザはWeb Bluetooth APIに対応していません/,
-      ),
+      await screen.findByText(/お使いの環境はBLE直接通信に対応していません/),
     ).toBeInTheDocument();
   });
 });

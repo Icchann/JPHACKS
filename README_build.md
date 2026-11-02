@@ -100,7 +100,46 @@ backend/.venv/bin/python -m pip install -r backend/requirements-dev.txt
 
 試験用APIの環境・トークン・DBの準備は一括起動スクリプトと `.env.example` を確認してください。個別にフロントだけ起動しても、実機APIが動くとは限りません。
 
-## 6. 品質コマンド
+## 6. モバイルアプリのビルドと実行（Capacitor / iOS / Android）
+
+山網は、ブラウザ版（`/mobile`）に加えて、iPhone実機でのBluetooth（CoreBluetooth）制限を突破するための **Capacitor ネイティブアプリ（iOS / Android）** を構成しています。
+
+### 6.1 Windows / macOS 環境ごとの実行方針
+
+| プラットフォーム        | Windows からの実行・ビルド                                                                                                                                                         | macOS からの実行・ビルド                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Android アプリ**      | **ローカルで完全対応 (◎)**<br>Android Studio または `./gradlew` で即座にビルド・実機転送可能                                                                                       | **ローカルで完全対応 (◎)**                                                                |
+| **iPhone (iOS) アプリ** | **GitHub Actions（クラウド上のMac）で自動ビルド (◎)**<br>※Appleの規約によりローカルでのXcodeビルドにはMacが必要ですが、GitHubへpushすればクラウド上のMacランナーがビルド検証を実行 | **ローカルで完全対応 (◎)**<br>Xcodeから手元のiPhoneへ無料のApple IDで直接インストール可能 |
+
+### 6.2 Windows 環境から進める場合（手元にMacがない場合）
+
+1. **GitHub Actions クラウドビルドの活用**:
+   - コードを変更してブランチまたはリポジトリへ `git push` すると、自動的に `.github/workflows/mobile-build.yml` がトリガーされます。
+   - **iOS**: クラウド上の `macos-latest` ランナーで Xcode ビルド（コンパイル・依存関係解決）が実行され、ビルドエラーがないか自動検証されます。
+   - **Android**: クラウド上の Linux ランナーで `app-debug.apk` が自動生成され、GitHub Actions の「Artifacts（成果物）」から直接ダウンロードして実機へインストールできます。
+2. **Windows ローカルでの Android アプリビルド**:
+   ```powershell
+   cd frontend
+   npx cap sync android
+   npx cap open android
+   ```
+   Android Studio が立ち上がり、USB接続した Android 実機へ「Run」ボタン一発で転送できます。
+
+### 6.3 macOS 環境での iPhone (iOS) 実機書き込み手順
+
+手元に Mac がある場合、またはチーム内の Mac メンバーに依頼する場合：
+
+1. リポジトリを取得し、Capacitor を同期します：
+   ```bash
+   cd frontend
+   npx cap sync ios
+   npx cap open ios
+   ```
+2. Xcode が開きます。手元の iPhone を USB ケーブルで接続します。
+3. `App` ターゲットの「Signing & Capabilities」で、自分の個人の無料 Apple ID（Personal Team）を選択します（年間99ドルの有料開発者登録は不要です）。
+4. 上部の実行先デバイスに接続した iPhone を選択し、**「Run (⌘R)」** を押すと、iPhone 実機へ直接山網アプリが書き込まれ起動します。
+
+## 7. 品質コマンド
 
 次は実行手順であり、現在の成功件数や全項目の合格を示すものではありません。
 

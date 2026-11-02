@@ -3,4 +3,7 @@ coverage
 node_modules
 openapi.json
 src/types/api.d.ts
+ios
+android
+out
 
